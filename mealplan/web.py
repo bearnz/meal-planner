@@ -83,6 +83,20 @@ def reroll(iso_day: str):
     return redirect(url_for("index"))
 
 
+@app.post("/office/<iso_day>")
+def office(iso_day: str):
+    config, err = _config_or_error()
+    if err:
+        return jsonify({"error": err}), 400
+    try:
+        service.toggle_office_day(config, iso_day)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.error("office toggle failed: %s", traceback.format_exc())
+        return render_template("plan.html", plan=store.load_plan(),
+                               error=str(exc), cache=store.load_cache()), 500
+    return redirect(url_for("index"))
+
+
 @app.route("/shopping")
 def shopping():
     plan = store.load_plan()

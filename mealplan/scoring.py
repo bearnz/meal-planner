@@ -206,6 +206,8 @@ class Scored:
     minutes: int | None          # wall clock, start to plate
     hands_on: int | None         # of which, actually standing at the hob
     unattended: bool             # can be started hours ahead and left
+    preferred_source: bool       # from a site you like cooking from
+    domain: str                  # where it came from, for display
     category_names: list[str]
     reasons: list[str]
 
@@ -294,6 +296,55 @@ def score_effort(r: Recipe, category_names: list[str]) -> tuple[float, list[str]
     return max(0.0, min(1.0, value)), reasons
 
 
+def source_domain(r: Recipe) -> str:
+    """A comparable domain for the recipe's origin, or "".
+
+    Paprika fills these inconsistently: `source_url` is a real URL when the
+    recipe was imported from the web, while `source` is whatever the site called
+    itself -- "RecipeTin Eats", "recipetineats.com", sometimes a book title. So
+    both are tried and the answer is normalised to a bare domain, because
+    "www.recipetineats.com" and "recipetineats.com" are not two websites.
+    """
+    for raw in (r.source_url, r.source):
+        text = (raw or "").strip().lower()
+        if not text:
+            continue
+        m = re.search(r"https?://([^/\s]+)", text)
+        host = m.group(1) if m else text
+        m2 = re.search(r"\b([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+)\b", host)
+        if m2:
+            return m2.group(1).removeprefix("www.")
+    return ""
+
+
+def matches_source(r: Recipe, preferred: list[str]) -> bool:
+    """Is this recipe from one of the preferred sources?
+
+    Matched on the domain when there is one, and otherwise on the source text --
+    a recipe typed in by hand and credited to "RecipeTin Eats" with no URL is
+    still from RecipeTin Eats, and the whole point of the preference is that it
+    finds the ones you actually cook from.
+    """
+    if not preferred:
+        return False
+    domain = source_domain(r)
+    blob = f"{r.source or ''} {r.source_url or ''}".lower()
+    for want in preferred:
+        w = want.strip().lower().removeprefix("www.")
+        if not w:
+            continue
+        if domain and (domain == w or domain.endswith("." + w)):
+            return True
+        if w in blob:
+            return True
+        # "recipetineats.com" should also match a source written "RecipeTin
+        # Eats", which is the same site with the spaces a human puts in.
+        bare = re.sub(r"\.[a-z.]+$", "", w)
+        if bare and re.sub(r"[^a-z0-9]", "", blob).find(bare) >= 0:
+            return True
+    return False
+
+
 def is_unattended(r: Recipe, category_names: list[str]) -> bool:
     hay = _haystack(r, category_names)
     return any(term in hay for term in UNATTENDED_TERMS)
@@ -315,8 +366,11 @@ def score(r: Recipe, categories: dict[str, str], config: dict) -> Scored:
         minutes = (prep or 0) + (cook or 0)
     hands_on = prep if prep is not None else minutes
 
+    preferred = list(config.get("preferred_sources") or [])
     return Scored(recipe=r, heartiness=heart, effort=effort, minutes=minutes,
                   hands_on=hands_on, unattended=is_unattended(r, names),
+                  preferred_source=matches_source(r, preferred),
+                  domain=source_domain(r),
                   category_names=names, reasons=hr + er)
 
 

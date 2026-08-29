@@ -1,33 +1,44 @@
 {
-  "location": "PUT YOUR TOWN HERE, GB",
+  "location": "Auckland, NZ",
+  "latitude": -36.848,
+  "longitude": 174.762,
+
   "units": "metric",
+  "household_size": 2,
   "week_starts_on": "today",
-  "weeknight_max_minutes": 75,
-  "effort_ceiling": {
-    "monday": 0.35,
-    "tuesday": 0.35,
-    "wednesday": 0.35,
-    "thursday": 0.35,
-    "friday": 0.55,
-    "saturday": 1.0,
-    "sunday": 1.0
+
+  "office_days": ["tuesday", "wednesday", "thursday"],
+
+  "day_types": {
+    "office": {
+      "effort_ceiling": 0.30,
+      "effort_target": 0.12,
+      "max_minutes": 50
+    },
+    "home": {
+      "effort_ceiling": 0.62,
+      "effort_target": 0.32,
+      "max_minutes": null
+    },
+    "weekend": {
+      "effort_ceiling": 1.0,
+      "effort_target": 0.78,
+      "max_minutes": null
+    }
   },
-  "effort_target": {
-    "monday": 0.15,
-    "tuesday": 0.15,
-    "wednesday": 0.15,
-    "thursday": 0.2,
-    "friday": 0.4,
-    "saturday": 0.8,
-    "sunday": 0.7
-  },
+
+  "preferred_sources": ["recipetineats.com"],
+
   "weights": {
     "heartiness": 1.0,
     "effort": 1.2,
     "repeat": 0.8,
-    "variety": 0.6
+    "variety": 0.6,
+    "source": 0.45
   },
+
   "repeat_memory_weeks": 4,
+
   "exclude_categories": [
     "Breakfast",
     "Dessert",
@@ -37,6 +48,7 @@
     "Sides",
     "Lunch"
   ],
+
   "heartiness_overrides": {},
   "effort_overrides": {}
 }

@@ -8,6 +8,7 @@ weather for somewhere else.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -83,7 +84,23 @@ class DayWeather:
 
 
 def geocode(place: str) -> tuple[float, float, str]:
-    """Resolve a place name to (lat, lon, pretty name)."""
+    """Resolve a place name to (lat, lon, pretty name).
+
+    Refuses a bare number, because Open-Meteo's geocoder does not do postcodes
+    and does not say so: it matches the digits against place names worldwide and
+    answers confidently. An Auckland postcode comes back as *Amsterdam* -- a forecast for the
+    wrong hemisphere, delivered without a word of complaint, which would then be
+    cached and never questioned again. If you have a postcode, put latitude and
+    longitude in config.json instead; there is no ambiguity in a coordinate.
+    """
+    if re.fullmatch(r"[\s\d,.\-]+", place or ""):
+        raise WeatherError(
+            f"{place!r} looks like a postcode or a pair of numbers. Open-Meteo's "
+            f"geocoder cannot resolve postcodes and will silently return an "
+            f"unrelated town rather than fail, so this is refused instead of "
+            f'guessed. Either set "location" to a suburb or city name, or set '
+            f'"latitude" and "longitude" in config.json directly.'
+        )
     r = requests.get(
         GEOCODE_URL,
         params={"name": place, "count": 1, "language": "en", "format": "json"},

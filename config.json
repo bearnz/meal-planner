@@ -1,0 +1,42 @@
+{
+  "location": "PUT YOUR TOWN HERE, GB",
+  "units": "metric",
+  "week_starts_on": "today",
+  "weeknight_max_minutes": 75,
+  "effort_ceiling": {
+    "monday": 0.35,
+    "tuesday": 0.35,
+    "wednesday": 0.35,
+    "thursday": 0.35,
+    "friday": 0.55,
+    "saturday": 1.0,
+    "sunday": 1.0
+  },
+  "effort_target": {
+    "monday": 0.15,
+    "tuesday": 0.15,
+    "wednesday": 0.15,
+    "thursday": 0.2,
+    "friday": 0.4,
+    "saturday": 0.8,
+    "sunday": 0.7
+  },
+  "weights": {
+    "heartiness": 1.0,
+    "effort": 1.2,
+    "repeat": 0.8,
+    "variety": 0.6
+  },
+  "repeat_memory_weeks": 4,
+  "exclude_categories": [
+    "Breakfast",
+    "Dessert",
+    "Drinks",
+    "Baking",
+    "Snacks",
+    "Sides",
+    "Lunch"
+  ],
+  "heartiness_overrides": {},
+  "effort_overrides": {}
+}

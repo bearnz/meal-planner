@@ -1,0 +1,154 @@
+:root {
+  --bg: #faf8f5;
+  --card: #ffffff;
+  --ink: #1e1b18;
+  --ink-soft: #6b635b;
+  --line: #e6e0d8;
+  --accent: #b4531f;
+  --accent-soft: #f0d9c9;
+  --effort: #3f6f5b;
+  --weekend: #fdf6ee;
+  --error-bg: #fdecea;
+  --error-ink: #8c2718;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16140f;
+    --card: #211e18;
+    --ink: #f0ebe3;
+    --ink-soft: #a49a8d;
+    --line: #35302a;
+    --accent: #e0824a;
+    --accent-soft: #4a3021;
+    --effort: #6fb094;
+    --weekend: #2a251c;
+    --error-bg: #3a1c17;
+    --error-ink: #f0a596;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 1.5rem clamp(1rem, 4vw, 3rem) 4rem;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 1rem; margin: 0; }
+
+.bar {
+  display: flex; flex-wrap: wrap; gap: 1rem;
+  align-items: flex-end; justify-content: space-between;
+  padding-bottom: 1rem; margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.sub { margin: 0.25rem 0 0; color: var(--ink-soft); font-size: 0.85rem; }
+
+.actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.actions form { margin: 0; }
+
+button, .button {
+  font: inherit; font-size: 0.85rem; font-weight: 550;
+  padding: 0.45rem 0.85rem; border-radius: 7px;
+  border: 1px solid transparent; background: var(--accent); color: #fff;
+  cursor: pointer; text-decoration: none; display: inline-block;
+}
+button:hover, .button:hover { filter: brightness(1.08); }
+
+button.ghost, .ghost.button {
+  background: transparent; color: var(--ink);
+  border-color: var(--line);
+}
+button.ghost:hover, .ghost.button:hover {
+  background: var(--card); filter: none; border-color: var(--accent);
+}
+button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
+
+.error {
+  background: var(--error-bg); color: var(--error-ink);
+  border-radius: 9px; padding: 0.9rem 1.1rem; margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+}
+.error p { margin: 0.4rem 0 0; font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+.note { color: var(--ink-soft); font-size: 0.85rem; margin: 0 0 1.25rem; }
+.note.tiny { font-size: 0.75rem; margin: 0.6rem 0 0; }
+
+.week {
+  display: grid; gap: 0.9rem;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+}
+
+.day {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 11px; padding: 1rem 1.05rem 0.85rem;
+  display: flex; flex-direction: column;
+}
+.day.weekend { background: var(--weekend); border-color: var(--accent-soft); }
+
+.day-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 0.75rem; margin-bottom: 0.6rem;
+}
+.date { color: var(--ink-soft); font-size: 0.78rem; }
+
+.wx { display: flex; align-items: baseline; gap: 0.3rem; white-space: nowrap; }
+.wx .icon { font-size: 1.15rem; }
+.wx .temp { font-weight: 600; font-size: 0.95rem; }
+.wx .wet { color: var(--ink-soft); font-size: 0.72rem; }
+
+.recipe { margin: 0 0 0.35rem; font-size: 1.08rem; line-height: 1.3; }
+.recipe a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+.recipe a:hover { border-bottom-color: var(--accent); }
+
+.why {
+  margin: 0 0 0.85rem; color: var(--ink-soft);
+  font-size: 0.8rem; line-height: 1.45;
+}
+
+.meters { display: grid; gap: 0.4rem; margin-bottom: 0.85rem; }
+.meter { display: flex; align-items: center; gap: 0.6rem; }
+.meter .label {
+  width: 3.6rem; flex: none; color: var(--ink-soft);
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.track {
+  position: relative; flex: 1; height: 6px;
+  background: var(--line); border-radius: 3px; overflow: visible;
+}
+.fill { height: 100%; border-radius: 3px; background: var(--accent); }
+.fill.effort { background: var(--effort); }
+.want {
+  position: absolute; top: -3px; width: 2px; height: 12px;
+  background: var(--ink); opacity: 0.55; border-radius: 1px;
+  transform: translateX(-1px);
+}
+
+.day-foot {
+  margin-top: auto; padding-top: 0.6rem; border-top: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+}
+.day-foot form { margin: 0; }
+.meta { color: var(--ink-soft); font-size: 0.75rem; }
+
+/* shopping list */
+.shop { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.shop-day {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 11px; padding: 1rem 1.1rem;
+}
+.shop-recipe { margin: 0.15rem 0 0.75rem; color: var(--ink-soft); font-size: 0.82rem; }
+.shop-day ul { list-style: none; margin: 0; padding: 0; }
+.shop-day li { font-size: 0.85rem; padding: 0.18rem 0; }
+.shop-day li.heading {
+  font-weight: 600; color: var(--ink-soft);
+  margin-top: 0.5rem; font-size: 0.78rem;
+}
+.shop-day label { display: flex; gap: 0.5rem; align-items: baseline; cursor: pointer; }
+.shop-day input:checked + span { text-decoration: line-through; opacity: 0.45; }

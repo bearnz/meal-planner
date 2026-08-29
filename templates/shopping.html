@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shopping list</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="bar">
+  <div>
+    <h1>Shopping list</h1>
+    <p class="sub">Grouped by night. Quantities are as written in Paprika.</p>
+  </div>
+  <div class="actions">
+    <a class="ghost button" href="{{ url_for('index') }}">Back to the week</a>
+  </div>
+</header>
+
+{% if groups %}
+  <div class="shop">
+  {% for g in groups %}
+    <section class="shop-day">
+      <h2>{{ g.day_name }}</h2>
+      <p class="shop-recipe">{{ g.name }}</p>
+      <ul>
+        {% for line in g.ingredients %}
+          {% if line.rstrip().endswith(':') %}
+            <li class="heading">{{ line }}</li>
+          {% else %}
+            <li><label><input type="checkbox"> <span>{{ line }}</span></label></li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
+  </div>
+{% else %}
+  <p class="note">Nothing to shop for &mdash; there is no plan yet.</p>
+{% endif %}
+
+</body>
+</html>

@@ -15,6 +15,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 CONFIG_PATH = ROOT / "config.json"
+PRICES_PATH = ROOT / "prices.json"
 CACHE_PATH = DATA / "recipes.json"
 PLAN_PATH = DATA / "plan.json"
 HISTORY_PATH = DATA / "history.json"
@@ -55,6 +56,11 @@ def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False),
                     encoding="utf-8")
+
+
+def load_prices() -> dict:
+    """The price catalogue. Missing is fine -- costing just switches off."""
+    return _read_json(PRICES_PATH, {})
 
 
 def load_config() -> dict:

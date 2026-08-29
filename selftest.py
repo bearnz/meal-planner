@@ -53,54 +53,57 @@ RTE_NAME = "RecipeTin Eats"
 LIBRARY = [
     recipe("Beef Shin Stew with Dumplings",
            ["1kg beef shin", "2 onions", "3 carrots", "500ml beef stock",
-            "200g suet", "300g flour", "2 potatoes", "bay leaf"],
+            "200g suet", "300g flour", "600g potatoes", "1 bay leaf"],
            ["Brown the beef shin.", "Soften the onions.", "Add stock and simmer.",
             "Braise in the oven for 3 hours.", "Make the dumplings.",
             "Add dumplings and cook 20 min."],
            prep="30 mins", cook="3 hrs 30 mins", total="4 hrs"),
 
     recipe("Sausage and Butter Bean Casserole",
-           ["8 sausages", "2 tins butter beans", "1 onion", "chorizo",
-            "chopped tomatoes", "chicken stock"],
+           ["8 sausages", "2 x 400g tins butter beans", "1 onion", "150g chorizo",
+            "1 x 400g tin chopped tomatoes", "300ml chicken stock"],
            ["Brown the sausages in a one-pot.", "Add everything else.",
             "Cover and cook for 40 minutes."],
            prep="10 mins", cook="45 mins", total="55 mins", difficulty="Easy"),
 
     recipe("Watermelon and Feta Salad",
-           ["watermelon", "feta", "mint", "lime", "olive oil", "rocket"],
+           ["800g watermelon", "200g feta", "20g mint", "2 limes", "3 tbsp olive oil",
+            "100g rocket"],
            ["Chop the watermelon.", "Crumble over the feta.", "Dress and serve."],
            prep="10 mins", total="10 mins", difficulty="Easy"),
 
     recipe("Grilled Prawn Skewers",
-           ["500g prawns", "lime", "garlic", "coriander", "chilli flakes"],
+           ["500g prawns", "2 limes", "3 cloves garlic", "20g coriander",
+            "1 tsp chilli flakes"],
            ["Marinate the prawns.", "Thread onto skewers.", "Grill 3 min a side."],
            prep="15 mins", cook="8 mins", total="25 mins", difficulty="Easy"),
 
     recipe("Chicken Traybake with Lemon",
-           ["6 chicken thighs", "2 lemons", "new potatoes", "olive oil",
-            "oregano"],
+           ["6 chicken thighs", "2 lemons", "800g new potatoes", "3 tbsp olive oil",
+            "1 tsp oregano"],
            ["Heat the oven.", "Throw everything in a tray bake.",
             "Roast for 45 minutes."],
            prep="10 mins", cook="45 mins", total="55 mins", difficulty="Easy",
            source_url=RTE_URL),
 
     recipe("Cod with Courgette and Basil",
-           ["4 cod fillets", "courgette", "basil", "lemon", "olive oil"],
+           ["4 cod fillets", "2 courgettes", "20g basil", "1 lemon", "2 tbsp olive oil"],
            ["Steam the courgette.", "Pan fry the cod.", "Dress with basil."],
            prep="10 mins", cook="12 mins", total="22 mins", difficulty="Easy"),
 
     recipe("Slow Cooker Chilli",
-           ["1kg beef mince", "kidney beans", "chopped tomatoes", "cumin",
-            "chipotle", "onion", "rice"],
+           ["1kg beef mince", "2 x 400g tins kidney beans",
+            "2 x 400g tins chopped tomatoes", "2 tsp cumin", "2 tsp chipotle",
+            "2 onions", "400g rice"],
            ["Brown the mince.", "Everything in the slow cooker.",
             "Cook on low 8 hours."],
            prep="15 mins", cook="8 hrs", total="8 hrs 15 mins", difficulty="Easy",
            source_url=RTE_URL),
 
     recipe("Beef Wellington",
-           ["1kg beef fillet", "puff pastry", "mushroom duxelles", "prosciutto",
-            "egg yolk", "english mustard", "shallots", "thyme", "brandy",
-            "double cream", "butter", "flour"],
+           ["1kg beef fillet", "500g puff pastry", "500g mushrooms", "12 slices prosciutto",
+            "2 egg yolks", "2 tbsp english mustard", "3 shallots", "1 tsp thyme",
+            "50ml brandy", "100ml double cream", "100g butter", "50g flour"],
            ["Sear the fillet.", "Make the duxelles.", "Chill for 2 hours.",
             "Lay out the prosciutto.", "Wrap the fillet.", "Chill again.",
             "Roll the pastry.", "Wrap and glaze.", "Rest for 20 minutes.",
@@ -109,30 +112,31 @@ LIBRARY = [
            prep="1 hr 30 mins", cook="45 mins", total="4 hrs", difficulty="Hard"),
 
     recipe("Prawn Pad Thai",
-           ["rice noodles", "prawns", "tamarind", "fish sauce", "beansprouts",
-            "peanuts", "lime", "egg"],
+           ["400g rice noodles", "400g prawns", "2 tbsp tamarind", "3 tbsp fish sauce",
+            "200g beansprouts", "60g peanuts", "2 limes", "2 eggs"],
            ["Soak the noodles.", "Stir fry the prawns.", "Add sauce and toss."],
            prep="15 mins", cook="10 mins", total="25 mins", difficulty="Easy",
            source="recipetineats.com"),
 
     recipe("Lamb Tagine with Apricots",
-           ["1kg lamb shoulder", "apricots", "ras el hanout", "chickpeas",
-            "onion", "couscous", "almonds", "coriander"],
+           ["1kg lamb shoulder", "150g dried apricots", "2 tbsp ras el hanout",
+            "1 x 400g tin chickpeas", "2 onions", "300g couscous", "60g almonds",
+            "20g coriander"],
            ["Brown the lamb.", "Add spices.", "Simmer for 2 hours.",
             "Add apricots.", "Serve with couscous."],
            prep="25 mins", cook="2 hrs 15 mins", total="2 hrs 40 mins",
            source=RTE_NAME),
 
     recipe("Mushroom Risotto",
-           ["arborio rice", "mushrooms", "white wine", "parmesan", "butter",
-            "onion", "vegetable stock"],
+           ["350g arborio rice", "400g mushrooms", "150ml white wine", "80g parmesan",
+            "60g butter", "1 onion", "1 litre vegetable stock"],
            ["Soften the onion.", "Toast the rice.", "Add wine.",
             "Add stock a ladle at a time for 20 minutes.", "Stir in butter."],
            prep="10 mins", cook="30 mins", total="40 mins", difficulty="Medium"),
 
     recipe("Halloumi and Chickpea Wraps",
-           ["halloumi", "chickpeas", "tortilla wraps", "cucumber", "yoghurt",
-            "mint"],
+           ["400g halloumi", "1 x 400g tin chickpeas", "8 tortilla wraps", "1 cucumber",
+            "200g yoghurt", "20g mint"],
            ["Griddle the halloumi.", "Warm the wraps.", "Assemble."],
            prep="10 mins", cook="8 mins", total="18 mins", difficulty="Easy"),
 
@@ -141,8 +145,8 @@ LIBRARY = [
            total="30 mins", cats=["dessert"]),
 
     recipe("Pork Belly with Mashed Potato",
-           ["1kg pork belly", "potatoes", "double cream", "butter", "cider",
-            "apples", "sage"],
+           ["1kg pork belly", "800g potatoes", "100ml double cream", "60g butter",
+            "330ml cider", "3 apples", "1 tsp sage"],
            ["Score the belly.", "Slow roast for 3 hours.", "Crisp the crackling.",
             "Make the mash.", "Reduce the cider."],
            prep="20 mins", cook="3 hrs", total="3 hrs 20 mins", difficulty="Medium"),
@@ -660,6 +664,9 @@ if __name__ == "__main__":
     test_pinning()
     test_small_library()
     test_live_weather()
+
+    import selftest_cost
+    selftest_cost.run(check)
 
     import selftest_extra
     selftest_extra.run(check, {

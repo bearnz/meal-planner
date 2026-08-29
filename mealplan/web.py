@@ -34,6 +34,13 @@ def index():
     plan = store.load_plan()
     cache = store.load_cache()
     error = None
+    # A plan saved before costing existed has no money block; fill it in on read
+    # rather than forcing a re-plan, which would throw away the week's re-rolls.
+    if plan.get("days") and not plan.get("money"):
+        try:
+            plan["money"] = service.money_summary(plan, config)
+        except Exception:  # noqa: BLE001 - costing is a nicety, the plan is not
+            plan["money"] = {}
     if not plan.get("days"):
         try:
             plan = service.generate(config)

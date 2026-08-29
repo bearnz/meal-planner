@@ -39,6 +39,69 @@
   </div>
 {% endif %}
 
+{% if plan and plan.money and plan.money.per_portion_avg %}
+  {% set m = plan.money %}
+  <section class="money">
+    <div class="money-head">
+      <div>
+        <strong>${{ '%.2f' | format(m.per_portion_avg) }}</strong>
+        <span class="money-label">per portion, average</span>
+      </div>
+      <div>
+        <strong>${{ '%.2f' | format(m.week_for_household) }}</strong>
+        <span class="money-label">the week, for {{ m.people }}</span>
+      </div>
+      <div>
+        <strong>{{ m.store }}</strong>
+        <span class="money-label">your usual shop</span>
+      </div>
+      {% if m.total_saving %}
+        <div class="save">
+          <strong>${{ '%.2f' | format(m.total_saving) }}</strong>
+          <span class="money-label">on special elsewhere</span>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if m.savings %}
+      <details class="savings" open>
+        <summary>
+          {{ m.savings | length }} item{{ '' if m.savings|length == 1 else 's' }}
+          worth leaving {{ m.store }} for
+        </summary>
+        <ul>
+          {% for s in m.savings %}
+            <li>
+              <span class="s-item">{{ s.item }}</span>
+              <span class="s-store">{{ s.store }}</span>
+              <span class="s-price">${{ '%.2f' | format(s.normal) }}
+                &rarr; ${{ '%.2f' | format(s.special) }}</span>
+              <span class="s-saved">save ${{ '%.2f' | format(s.saved) }}</span>
+              {% if s.until %}<span class="s-until">till {{ s.until }}</span>{% endif %}
+              {% if s.note %}<span class="s-note">{{ s.note }}</span>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </details>
+    {% endif %}
+
+    {% if m.estimated %}
+      <p class="money-warn">
+        &#9888; The prices behind these numbers are <strong>hand-written
+        estimates</strong>, not real advertised prices, and so are the specials.
+        Edit <code>prices.json</code> with what you actually pay before trusting
+        any of it.
+      </p>
+    {% endif %}
+    {% if m.low_confidence %}
+      <p class="note tiny">
+        {{ m.low_confidence }} of 7 nights had ingredients that could not be
+        priced &mdash; those costs are marked <em>approx</em>.
+      </p>
+    {% endif %}
+  </section>
+{% endif %}
+
 {% if cache and cache.fetched %}
   <p class="note">Recipes last synced {{ cache.fetched.replace('T', ' ') }}.</p>
 {% endif %}
@@ -119,6 +182,13 @@
     {% endif %}
 
     <footer class="day-foot">
+      {% if d.cost and d.cost.per_portion %}
+        <span class="cost {% if not d.cost.confident %}rough{% endif %}"
+              title="{% if d.cost.confident %}Estimated from prices.json{% else %}Only {{ (d.cost.coverage * 100) | round | int }}% of ingredients could be priced{% endif %}">
+          ${{ '%.2f' | format(d.cost.per_portion) }}<span class="per">/portion</span>
+          {%- if not d.cost.confident %} <span class="rough-mark">approx</span>{% endif %}
+        </span>
+      {% endif %}
       <span class="meta">
         {%- if d.total_time %}{{ d.total_time }}{% elif d.minutes %}{{ d.minutes }} min{% endif -%}
         {%- if d.servings %} &middot; serves {{ d.servings }}

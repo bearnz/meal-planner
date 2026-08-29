@@ -310,6 +310,46 @@ edited — the weights are nudges, and several small ones agreeing is what moves
 score. `python run.py --scores` prints the whole library sorted by heartiness,
 which is the fastest way to see whether a change did what you wanted.
 
+## Where this is up to
+
+Working end to end against the demo library. To pick it up:
+
+```bash
+python seed_demo.py && python run.py      # see it work with invented recipes
+python selftest.py                        # 201 checks, all passing
+```
+
+**Not yet done, in the order it probably matters:**
+
+1. **Nothing has been run against a real Paprika library.** The sync client is
+   written and unexercised — `.env` has never been filled in here. Expect the
+   first real sync to turn up ingredient lines the parser has not met, and
+   category names that need adding to `exclude_categories`. `python run.py
+   --scores` and the coverage figures on the plan page are how you find them.
+
+2. **Every price is an estimate.** 0 of 206 verified. `--price` and `--receipt`
+   are the way in; `--stale` lists what still needs doing. Until that share
+   climbs, the money figures are for comparing recipes against each other, not
+   for budgeting.
+
+3. **Live price fetching is deliberately not built.** Foodstuffs' robots.txt
+   disallows the search and promotions paths this would need — see the note at
+   the top of `mealplan/pricesrc.py`. If a legitimate source turns up (a
+   commercial API, or your own order-history export), `robots_allows()` is the
+   gate to put it behind. An order-history importer is the obvious next move
+   and would reuse most of `parse_receipt`.
+
+4. **The preferences checkboxes submit on click with no confirmation**, and the
+   only feedback is the recipe count in the header changing. A stray click
+   during testing saved an aversion and silently dropped a recipe from the
+   library. Worth a confirm step, or an undo.
+
+5. **Smaller things:** the seasonality table is ~65 items and a starting point
+   rather than an authority; `EYE_SLIDE`-style judgement calls in the effort
+   constants have only been tested against a 13-recipe demo library and will
+   want revisiting once a real one is loaded; and the shopping list still does
+   not merge quantities across recipes, which is the one deliberate gap.
+
 ## Layout
 
 ```

@@ -10,7 +10,8 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
-from . import paprika, preferences, pricing, quantity, seasons, store, weather
+from . import (paprika, preferences, pricesrc, pricing, quantity, seasons,
+               store, weather)
 from .planner import Slot, build_plan, classify, is_eligible
 from .scoring import Scored, score
 from .weather import DayWeather, describe, wanted_heartiness
@@ -396,6 +397,7 @@ def money_summary(plan: dict, config: dict) -> dict[str, Any]:
             for s in savings
         ],
         "total_saving": round(sum(s.saved for s in savings), 2),
+        "freshness": pricesrc.freshness(cat.data),
     }
 
 

@@ -85,12 +85,25 @@
       </details>
     {% endif %}
 
-    {% if m.estimated %}
+    {% set f = m.freshness or {} %}
+    {% if f.total %}
+      <p class="freshness">
+        <span class="bar-track">
+          <span class="bar-fill" style="width: {{ (f.share * 100) | round | int }}%"></span>
+        </span>
+        {{ f.checked }} of {{ f.total }} prices verified
+        {%- if f.stale %} &middot; {{ f.stale }} gone stale{% endif %}
+      </p>
+    {% endif %}
+
+    {% if m.estimated and (f.share or 0) < 0.5 %}
       <p class="money-warn">
-        &#9888; The prices behind these numbers are <strong>hand-written
-        estimates</strong>, not real advertised prices, and so are the specials.
-        Edit <code>prices.json</code> with what you actually pay before trusting
-        any of it.
+        &#9888; Most of the prices behind these numbers are
+        <strong>hand-written estimates</strong>, not real advertised prices, and
+        so are the specials. Fix one in a second at the checkout:
+        <code>python run.py --price "beef mince" 15.49 --per 1000</code>,
+        or read a whole shop in with
+        <code>python run.py --receipt receipt.txt --apply</code>.
       </p>
     {% endif %}
     {% if m.low_confidence %}

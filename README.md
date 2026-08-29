@@ -14,7 +14,8 @@ python run.py            # web app on http://127.0.0.1:5173
 python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
-python selftest.py       # 184 checks over scoring, planning, costing and the forecast
+python run.py --stale    # which prices are real and which are estimates
+python selftest.py       # 201 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -197,6 +198,48 @@ each is listed, and the night's cost is marked *approx* with its coverage. A
 cost estimate quietly missing its most expensive line is the one failure that
 looks exactly like a correct answer.
 
+### Getting real prices in
+
+The shipped prices are estimates. Two ways to replace them with what you were
+actually charged, both stamping the date so the page can show how much of a cost
+is real:
+
+```bash
+python run.py --price "beef mince" 15.49 --per 1000    # one item, at the checkout
+python run.py --receipt receipt.txt                    # preview a whole shop
+python run.py --receipt receipt.txt --apply            # write it
+python run.py --stale                                  # what still needs checking
+```
+
+The receipt reader handles the shapes NZ receipts come in — a pack size in the
+description (`Beef Mince 500g  $7.49`), a unit price column
+(`Chicken Thighs  $8.99 /kg  $8.99`), and loose weighed goods. It previews by
+default and writes only on `--apply`, because a parser that silently rewrote the
+price list from a misread line would corrupt the one file every cost depends on.
+Anything it cannot resolve is skipped and named rather than guessed.
+
+One conversion in there is worth knowing about, because getting it wrong is both
+easy and enormous: a receipt line priced **per kilo** against an item the
+catalogue counts **each** has to be converted through the unit weight.
+`Chicken Thighs $8.99/kg` read naively becomes $8.99 *per thigh* — nine times
+the real figure, written straight into the price list. It converts, or it
+refuses; it never assumes.
+
+**There is no scraper, deliberately.** Foodstuffs (PAK'nSAVE and New World, one
+platform) publish a robots.txt disallowing exactly the paths this would need:
+
+```
+Disallow: /search          Disallow: /shop/search
+Disallow: /shop/offer      Disallow: /product-promotions
+```
+
+Product lookup by name and the current promotions — both named, in a
+machine-readable instruction from the operator about automated access. So this
+project does not request them. `pricesrc.robots_allows()` is the gate any future
+fetcher has to pass, and it **fails closed**: an unreachable robots.txt returns
+False, because a site that is timing out is the worst possible one to hammer and
+"I could not read the rules" is not a reason to assume there are none.
+
 ### One shop, and when to leave it
 
 Everything is costed at `primary_store`. Separately, the planner checks each
@@ -285,6 +328,7 @@ mealplan/
   preferences.py  aversions, avoided methods, and the page's candidate lists
   quantity.py     parse and scale an ingredient line
   pricing.py      ingredient -> item -> cost, staples, specials
+  pricesrc.py     receipts, manual price updates, robots.txt gate
   planner.py      day/recipe costs and the assignment search
   service.py      the operations, with no Flask in them
   store.py        config, recipe cache, plan and history on disk

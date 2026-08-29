@@ -2,16 +2,17 @@
   "location": "Auckland, NZ",
   "latitude": -36.848,
   "longitude": 174.762,
-
   "units": "metric",
   "household_size": 2,
   "week_starts_on": "today",
-
-  "office_days": ["tuesday", "wednesday", "thursday"],
-
+  "office_days": [
+    "tuesday",
+    "wednesday",
+    "thursday"
+  ],
   "day_types": {
     "office": {
-      "effort_ceiling": 0.30,
+      "effort_ceiling": 0.3,
       "effort_target": 0.12,
       "max_minutes": 50
     },
@@ -26,19 +27,19 @@
       "max_minutes": null
     }
   },
-
-  "preferred_sources": ["recipetineats.com"],
-
+  "preferred_sources": [
+    "recipetineats.com"
+  ],
   "weights": {
     "heartiness": 1.0,
     "effort": 1.2,
     "repeat": 0.8,
     "variety": 0.6,
-    "source": 0.45
+    "source": 0.45,
+    "avoid_method": 1.6,
+    "season": 0.7
   },
-
   "repeat_memory_weeks": 4,
-
   "exclude_categories": [
     "Breakfast",
     "Dessert",
@@ -48,7 +49,11 @@
     "Sides",
     "Lunch"
   ],
-
   "heartiness_overrides": {},
-  "effort_overrides": {}
+  "effort_overrides": {},
+  "avoid_ingredients": [],
+  "avoid_methods": [
+    "deep frying",
+    "shallow frying"
+  ]
 }

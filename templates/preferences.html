@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preferences</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="bar">
+  <div>
+    <h1>Preferences</h1>
+    {% if options %}
+      <p class="sub">
+        {{ options.eligible }} of {{ options.total }} recipes currently in play
+      </p>
+    {% endif %}
+  </div>
+  <div class="actions">
+    <a class="ghost button" href="{{ url_for('index') }}">Back to the week</a>
+  </div>
+</header>
+
+{% if error %}
+  <div class="error">
+    <strong>Heads up.</strong>
+    <p>{{ error }}</p>
+  </div>
+{% endif %}
+
+{% if options %}
+<form method="post" action="{{ url_for('save_prefs') }}">
+
+  <section class="pref-block">
+    <h2>Household</h2>
+    <p class="pref-note">
+      Recipes are scaled to this many people on the shopping list. Quantities
+      that cannot be read confidently are left alone and flagged rather than
+      guessed at.
+    </p>
+    <label class="people">
+      Cooking for
+      <input type="number" name="people" min="1" max="50"
+             value="{{ options.people or 2 }}">
+      people
+    </label>
+  </section>
+
+  <section class="pref-block">
+    <h2>Cooking we would rather avoid</h2>
+    <p class="pref-note">
+      A strong preference, not a ban &mdash; a recipe that is otherwise the best
+      thing available can still come up. The count is how many recipes in your
+      library involve it.
+    </p>
+    <div class="pref-grid">
+      {% for m in options.methods %}
+        <label class="pref {% if m.on %}on{% endif %}">
+          <input type="checkbox" name="method" value="{{ m.key }}"
+                 {% if m.on %}checked{% endif %}>
+          <span class="pref-name">{{ m.label }}</span>
+          <span class="pref-hint">{{ m.hint }}</span>
+          <span class="pref-count">{{ m.count }}</span>
+        </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="pref-block">
+    <h2>Ingredients we do not eat</h2>
+    <p class="pref-note">
+      These are removed from the library outright, unlike the preferences above.
+      The number beside each is how many recipes you would lose &mdash; worth a
+      look before ticking something common.
+    </p>
+    <div class="pref-grid tight">
+      {% for i in options.ingredients %}
+        <label class="pref {% if i.on %}on{% endif %} {% if i.count > (options.total // 3) %}costly{% endif %}">
+          <input type="checkbox" name="ingredient" value="{{ i.term }}"
+                 {% if i.on %}checked{% endif %}>
+          <span class="pref-name">{{ i.term }}</span>
+          <span class="pref-count">{{ i.count }}</span>
+        </label>
+      {% endfor %}
+    </div>
+    <label class="extra">
+      Anything else, comma separated
+      <input type="text" name="extra" placeholder="e.g. water chestnut, marmite">
+    </label>
+  </section>
+
+  <div class="pref-actions">
+    <button type="submit">Save and re-plan the week</button>
+  </div>
+</form>
+{% endif %}
+
+</body>
+</html>

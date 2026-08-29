@@ -10,8 +10,8 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
-from . import paprika, store, weather
-from .planner import Slot, build_plan, classify, is_dinner
+from . import paprika, preferences, quantity, seasons, store, weather
+from .planner import Slot, build_plan, classify, is_eligible
 from .scoring import Scored, score
 from .weather import DayWeather, describe, wanted_heartiness
 
@@ -35,8 +35,9 @@ def sync_recipes(progress: Callable[[int, int], None] | None = None) -> dict:
     return payload
 
 
-def load_library(config: dict) -> list[Scored]:
-    """Scored, dinner-only recipes from the cache."""
+def score_all(config: dict, month: int | None = None) -> list[Scored]:
+    """Every cached recipe, scored. No filtering -- the preferences page needs
+    to see what it is about to exclude, not only what survived."""
     cache = store.load_cache()
     raw = cache.get("recipes") or []
     if not raw:
@@ -45,8 +46,23 @@ def load_library(config: dict) -> list[Scored]:
             "pull them from Paprika."
         )
     categories = cache.get("categories") or {}
-    scored = [score(paprika.Recipe.from_json(d), categories, config) for d in raw]
-    return [s for s in scored if is_dinner(s, config)]
+    lat = float(config.get("latitude") or (config.get("_geo") or {}).get("lat") or 0.0)
+    table = seasons.seasons_for(lat)
+    month = month or seasons.month_for()
+    return [score(paprika.Recipe.from_json(d), categories, config, table, month)
+            for d in raw]
+
+
+def load_library(config: dict, month: int | None = None) -> list[Scored]:
+    """Scored recipes that are dinner and that the household will eat."""
+    scored = score_all(config, month)
+    library = [s for s in scored if is_eligible(s, config)]
+    if not library:
+        raise NoRecipes(
+            "Every recipe was filtered out. Check the ingredient aversions on "
+            "the preferences page, and exclude_categories in config.json."
+        )
+    return library
 
 
 # --- weather -----------------------------------------------------------------
@@ -185,6 +201,10 @@ def _day_payload(choice, forecast_known: bool, household: int = 0) -> dict[str, 
         "unattended": s.unattended,
         "domain": s.domain,
         "preferred_source": s.preferred_source,
+        "in_season": s.in_season,
+        "out_of_season": s.out_of_season,
+        "season_score": round(s.season_score, 3),
+        "avoid_methods": s.avoid_methods,
         "categories": s.category_names,
         "heartiness": round(s.heartiness, 3),
         "effort": round(s.effort, 3),
@@ -204,11 +224,14 @@ def _day_payload(choice, forecast_known: bool, household: int = 0) -> dict[str, 
 
 def generate(config: dict, seed: int | None = None,
              office_days: list[str] | None = None) -> dict:
-    library = load_library(config)
     lat, lon, pretty = resolve_location(config)
     forecast = weather.forecast(lat, lon, days=10)
     horizon = {w.day for w in forecast}
     start = week_start(forecast, config)
+    # The month of the week being planned, not of the machine's today: a plan
+    # generated on the 30th runs into the next month, and seasonality is the one
+    # score where that boundary means something.
+    library = load_library(config, month=start.month)
 
     # Carry the current week's office days over a re-plan. Editing them is a
     # deliberate act on the page; re-planning is not, and silently resetting
@@ -244,12 +267,12 @@ def reroll(config: dict, iso_day: str) -> dict:
     if not plan.get("days"):
         return generate(config)
 
-    library = load_library(config)
     lat, lon, pretty = resolve_location(config)
     forecast = weather.forecast(lat, lon, days=10)
     horizon = {w.day for w in forecast}
 
     start = date.fromisoformat(plan["days"][0]["date"])
+    library = load_library(config, month=start.month)
     office_days = plan.get("office_days") or default_office_days(config, start)
     slots = week_slots(forecast, start=start, office_days=set(office_days))
     recent = store.recent_uids(int(config.get("repeat_memory_weeks", 4)), start)
@@ -298,12 +321,18 @@ def toggle_office_day(config: dict, iso_day: str) -> dict:
     return generate(config, office_days=sorted(office))
 
 
-def shopping_list(plan: dict) -> list[dict[str, Any]]:
-    """Ingredients for the week, grouped by the night they are for.
+def shopping_list(plan: dict, people: int = 0) -> list[dict[str, Any]]:
+    """Ingredients for the week, grouped by the night they are for, scaled.
 
-    Deliberately not merged into a single deduplicated list: quantities in
-    Paprika are free text ("a splash", "2 tbsp, plus extra"), so adding them up
-    means parsing them, and parsing them wrongly is worse than not trying.
+    Still grouped rather than merged into one deduplicated list: quantities are
+    free text and adding "a splash" to "2 tbsp, plus extra" has no answer.
+    Scaling a single line is a different and much smaller problem -- multiply
+    the leading number, leave every word alone -- which is why that half is now
+    done and the merge still is not.
+
+    Anything the parser could not read is passed through untouched and counted,
+    so the page can say so. A line silently halved wrongly cannot be recovered
+    from; one flagged as unscaled can be checked in two seconds.
     """
     cache = store.load_cache()
     by_uid = {r["uid"]: r for r in (cache.get("recipes") or [])}
@@ -312,8 +341,63 @@ def shopping_list(plan: dict) -> list[dict[str, Any]]:
         r = by_uid.get(d.get("uid"))
         if not r:
             continue
-        lines = [ln.strip() for ln in (r.get("ingredients") or "").splitlines()
-                 if ln.strip()]
-        out.append({"day_name": d["day_name"], "name": d["name"],
-                    "ingredients": lines})
+        factor, made = quantity.servings_factor(r.get("servings", ""), people)
+        lines, unscaled = quantity.scale_ingredients(r.get("ingredients", ""), factor)
+        out.append({
+            "day_name": d["day_name"],
+            "name": d["name"],
+            "factor": round(factor, 3),
+            "makes": made,
+            "people": people,
+            "unscaled": unscaled,
+            "ingredients": [
+                {"text": ln.text, "scaled": ln.scaled, "original": ln.original,
+                 "heading": ln.text.rstrip().endswith(":")}
+                for ln in lines
+            ],
+        })
     return out
+
+
+def preference_options(config: dict) -> dict[str, Any]:
+    """What the preferences page shows: every candidate with its real cost.
+
+    The counts are the point. "Exclude mushrooms" is a different decision when it
+    removes four recipes than when it removes forty, and the only honest place to
+    tell someone that is before they click rather than after.
+    """
+    scored = score_all(config)
+    hays = [f"{r.name} {r.ingredients} {r.directions}".lower()
+            for r in (s.recipe for s in scored)]
+
+    chosen = [t.lower() for t in (config.get("avoid_ingredients") or [])]
+    # Anything already chosen stays listed even at zero matches, or unticking a
+    # term that has since left the library becomes impossible from the page.
+    terms = list(dict.fromkeys(preferences.COMMON_INGREDIENTS + chosen))
+    counts = preferences.library_counts(hays, terms)
+
+    eligible = [x for x in scored if is_eligible(x, config)]
+    return {
+        "total": len(scored),
+        "eligible": len(eligible),
+        "ingredients": [{"term": t, "count": n, "on": t in chosen}
+                        for t, n in counts],
+        "methods": [
+            {"key": k, "label": v["label"], "hint": v["hint"],
+             "count": preferences.method_counts(hays).get(k, 0),
+             "on": k in (config.get("avoid_methods") or [])}
+            for k, v in preferences.METHOD_GROUPS.items()
+        ],
+        "people": int(config.get("household_size", 0) or 0),
+    }
+
+
+def save_preferences(config: dict, avoid_ingredients: list[str],
+                     avoid_methods: list[str], people: int) -> dict:
+    config["avoid_ingredients"] = sorted({t.strip().lower()
+                                          for t in avoid_ingredients if t.strip()})
+    config["avoid_methods"] = [m for m in avoid_methods
+                               if m in preferences.METHOD_GROUPS]
+    config["household_size"] = max(1, min(int(people or 1), 50))
+    store.save_config(config)
+    return config

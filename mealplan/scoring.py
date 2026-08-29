@@ -15,6 +15,7 @@ import math
 import re
 from dataclasses import dataclass
 
+from . import preferences, seasons
 from .paprika import Recipe
 
 # --- heartiness ---------------------------------------------------------------
@@ -208,6 +209,11 @@ class Scored:
     unattended: bool             # can be started hours ahead and left
     preferred_source: bool       # from a site you like cooking from
     domain: str                  # where it came from, for display
+    season_score: float          # -0.35..1.0, how in-season its produce is
+    in_season: list[str]         # produce at its best right now
+    out_of_season: list[str]     # produce that is not
+    avoid_methods: list[str]     # avoided cooking methods it uses
+    excluded_by: list[str]       # aversions that rule it out entirely
     category_names: list[str]
     reasons: list[str]
 
@@ -350,7 +356,9 @@ def is_unattended(r: Recipe, category_names: list[str]) -> bool:
     return any(term in hay for term in UNATTENDED_TERMS)
 
 
-def score(r: Recipe, categories: dict[str, str], config: dict) -> Scored:
+def score(r: Recipe, categories: dict[str, str], config: dict,
+          season_table: dict[str, set[int]] | None = None,
+          month: int | None = None) -> Scored:
     names = [categories.get(uid, "") for uid in r.categories]
     names = [n for n in names if n]
 
@@ -367,10 +375,28 @@ def score(r: Recipe, categories: dict[str, str], config: dict) -> Scored:
     hands_on = prep if prep is not None else minutes
 
     preferred = list(config.get("preferred_sources") or [])
+
+    # Seasonality reads the ingredients only. The directions mention lemon
+    # juice and a bay leaf constantly, and neither is a reason to call a dish
+    # seasonal -- what matters is what you have to go out and buy.
+    season_score, fresh, stale = 0.0, [], []
+    if season_table and month:
+        season_score, fresh, stale = seasons.score_recipe(
+            r.ingredients, month, season_table)
+
+    verdict = preferences.assess(
+        _haystack(r, names),
+        list(config.get("avoid_ingredients") or []),
+        list(config.get("avoid_methods") or []))
+
     return Scored(recipe=r, heartiness=heart, effort=effort, minutes=minutes,
                   hands_on=hands_on, unattended=is_unattended(r, names),
                   preferred_source=matches_source(r, preferred),
                   domain=source_domain(r),
+                  season_score=season_score, in_season=fresh,
+                  out_of_season=stale,
+                  avoid_methods=verdict.methods,
+                  excluded_by=verdict.excluded_by,
                   category_names=names, reasons=hr + er)
 
 

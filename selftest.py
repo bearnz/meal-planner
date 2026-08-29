@@ -15,7 +15,7 @@ import sys
 from datetime import date, timedelta
 
 from mealplan import store
-from mealplan.planner import Slot, build_plan, is_dinner
+from mealplan.planner import Slot, build_plan, is_dinner, is_eligible
 from mealplan.scoring import parse_minutes, score, tags
 from mealplan.paprika import Recipe
 from mealplan.weather import DayWeather, wanted_heartiness
@@ -150,6 +150,8 @@ LIBRARY = [
 
 CONFIG = {
     "location": "Auckland, NZ",
+    "avoid_ingredients": [],
+    "avoid_methods": ["deep frying", "shallow frying"],
     "latitude": -36.848, "longitude": 174.762,
     "household_size": 2,
     "office_days": ["tuesday", "wednesday", "thursday"],
@@ -163,7 +165,8 @@ CONFIG = {
     },
     "preferred_sources": ["recipetineats.com"],
     "weights": {"heartiness": 1.0, "effort": 1.2, "repeat": 0.8,
-                "variety": 0.6, "source": 0.45},
+                "variety": 0.6, "source": 0.45,
+                "avoid_method": 1.6, "season": 0.7},
     "repeat_memory_weeks": 4,
     "exclude_categories": ["dessert", "breakfast"],
     "heartiness_overrides": {}, "effort_overrides": {},
@@ -183,9 +186,17 @@ def week_of(monday, tmax=16.0, precip=0.0, chance=0, office=OFFICE):
     return out
 
 
-def scored_library():
+NZ_SEASONS = None       # built lazily; seasons_for is cheap but not free
+
+
+def scored_library(month: int | None = None, config: dict | None = None):
+    global NZ_SEASONS
+    from mealplan.seasons import seasons_for
+    if NZ_SEASONS is None:
+        NZ_SEASONS = seasons_for(-36.848)
     cats = {"dinner": "Dinner", "dessert": "Dessert"}
-    return [score(r, cats, CONFIG) for r in LIBRARY]
+    return [score(r, cats, config or CONFIG, NZ_SEASONS, month or 8)
+            for r in LIBRARY]
 
 
 def weather_day(day, tmax, precip=0.0, chance=0, wind=10.0, code=0):
@@ -252,7 +263,7 @@ def test_weather_curve():
 
 def test_weekday_effort():
     print("\nweekday vs weekend effort")
-    lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
+    lib = [s for s in scored_library() if is_eligible(s, CONFIG)]
     monday = next_monday()
     # A uniformly mild week, so effort is the only thing deciding anything.
     slots = week_of(monday, 16.0)
@@ -303,7 +314,7 @@ def test_weeknight_clock():
           f"hands_on={stew.hands_on} total={stew.minutes}")
 
     monday = next_monday()
-    plan = build_plan([s for s in scored_library() if is_dinner(s, CONFIG)],
+    plan = build_plan([s for s in scored_library() if is_eligible(s, CONFIG)],
                       week_of(monday, 5.0), CONFIG, {}, seed=7)
 
     cap = CONFIG["day_types"]["office"]["max_minutes"]
@@ -339,7 +350,7 @@ def test_weeknight_clock():
 
 def test_weather_drives_choice():
     print("\nweather drives the choice")
-    lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
+    lib = [s for s in scored_library() if is_eligible(s, CONFIG)]
     monday = next_monday()
 
     hot_plan = build_plan(lib, week_of(monday, 30.0), CONFIG, {}, seed=2)
@@ -371,7 +382,7 @@ def test_weather_drives_choice():
 
 def test_no_repeats_and_variety():
     print("\nrepeats and variety")
-    lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
+    lib = [s for s in scored_library() if is_eligible(s, CONFIG)]
     monday = next_monday()
     slots = week_of(monday, 12.0)
     plan = build_plan(lib, slots, CONFIG, {}, seed=4)
@@ -460,7 +471,7 @@ def test_day_types():
 
     # A week where every weekday is an office day should be measurably easier
     # than one where none are -- that is the whole feature, end to end.
-    all_lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
+    all_lib = [s for s in scored_library() if is_eligible(s, CONFIG)]
     busy = build_plan(all_lib, week_of(monday, 12.0,
                                        office={"monday", "tuesday", "wednesday",
                                                "thursday", "friday"}),
@@ -518,7 +529,7 @@ def test_source_preference():
     # It has to actually change a plan, and it has to remain a preference: a
     # weight that filters is a different feature and a much worse one.
     monday = next_monday()
-    all_lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
+    all_lib = [s for s in scored_library() if is_eligible(s, CONFIG)]
     with_pref = build_plan(all_lib, week_of(monday, 14.0), CONFIG, {}, seed=12)
     without = build_plan(all_lib, week_of(monday, 14.0),
                          {**CONFIG, "preferred_sources": []}, {}, seed=12)
@@ -580,7 +591,7 @@ def test_history_ignores_the_future():
 
 def test_pinning():
     print("\nre-roll keeps the rest of the week")
-    lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
+    lib = [s for s in scored_library() if is_eligible(s, CONFIG)]
     monday = next_monday()
     slots = week_of(monday, 14.0)
     plan = build_plan(lib, slots, CONFIG, {}, seed=5)
@@ -599,7 +610,7 @@ def test_pinning():
 
 def test_small_library():
     print("\nedge cases")
-    lib = [s for s in scored_library() if is_dinner(s, CONFIG)][:7]
+    lib = [s for s in scored_library() if is_eligible(s, CONFIG)][:7]
     monday = next_monday()
     slots = week_of(monday, 14.0)
     plan = build_plan(lib, slots, CONFIG, {}, seed=6)
@@ -649,6 +660,12 @@ if __name__ == "__main__":
     test_pinning()
     test_small_library()
     test_live_weather()
+
+    import selftest_extra
+    selftest_extra.run(check, {
+        "LIBRARY": LIBRARY, "CONFIG": CONFIG, "week_of": week_of,
+        "next_monday": next_monday, "scored_library": scored_library,
+    })
 
     print(f"\n{'All checks passed.' if not failures else str(failures) + ' FAILED.'}\n")
     sys.exit(1 if failures else 0)

@@ -1,0 +1,434 @@
+"""What a recipe costs per portion, and where it is cheaper this week.
+
+Three jobs, in order of how much can go wrong:
+
+1. **Read an ingredient line into an amount, a unit and a thing.** "400g beef
+   mince" is easy; "a good glug of olive oil" has no amount at all. Anything
+   that cannot be read is reported as unpriced rather than assumed to be free,
+   because a cost per portion quietly missing its most expensive line is worse
+   than no number at all.
+
+2. **Convert to the unit the price is quoted in.** Mass to mass is arithmetic.
+   Volume to mass needs a density, and counts to mass need a typical size, so
+   both live on the catalogue entry. Where neither is known the line is
+   unpriced -- again, said out loud.
+
+3. **Decide what to charge for.** Pantry staples are assumed to be in the
+   cupboard already. A knob of butter is free; the 250g a pastry wants is not.
+   So each staple carries a free allowance and only the *excess* is charged --
+   the excess rather than the whole amount, so cost is continuous. Charging the
+   full 250g the moment it crosses 30g would make a recipe using 31g of butter
+   cost forty cents more than one using 29g, which is a cliff nobody could
+   explain from the page.
+
+Prices come from prices.json. Nothing here fetches anything: see the notes in
+that file about where the numbers are from and how much to trust them.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+
+from .quantity import QUANTITY_RE, VULGAR, WORD_NUMBERS, _parse_number
+
+# unit -> (kind, how many base units). Base units are grams and millilitres.
+UNITS: dict[str, tuple[str, float]] = {
+    "g": ("mass", 1.0), "gram": ("mass", 1.0), "grams": ("mass", 1.0),
+    "gm": ("mass", 1.0), "gms": ("mass", 1.0),
+    "kg": ("mass", 1000.0), "kilo": ("mass", 1000.0), "kilos": ("mass", 1000.0),
+    "kilogram": ("mass", 1000.0), "kilograms": ("mass", 1000.0),
+    "oz": ("mass", 28.35), "ounce": ("mass", 28.35), "ounces": ("mass", 28.35),
+    "lb": ("mass", 453.6), "lbs": ("mass", 453.6), "pound": ("mass", 453.6),
+
+    "ml": ("volume", 1.0), "millilitre": ("volume", 1.0),
+    "millilitres": ("volume", 1.0), "mls": ("volume", 1.0),
+    "l": ("volume", 1000.0), "litre": ("volume", 1000.0),
+    "litres": ("volume", 1000.0), "liter": ("volume", 1000.0),
+    # NZ/AU metric cup is 250ml, not the US 240. The planner is in Auckland.
+    "cup": ("volume", 250.0), "cups": ("volume", 250.0),
+    "tbsp": ("volume", 15.0), "tablespoon": ("volume", 15.0),
+    "tablespoons": ("volume", 15.0), "tbs": ("volume", 15.0),
+    "tsp": ("volume", 5.0), "teaspoon": ("volume", 5.0),
+    "teaspoons": ("volume", 5.0),
+}
+
+# Words that look like units and are really shapes of packaging or vagueness.
+# They stop a line being priced by amount; some are rescued by the catalogue
+# (a "tin" of tomatoes has a known size), the rest are honestly unpriceable.
+PACK_WORDS = {"tin", "tins", "can", "cans", "jar", "jars", "packet", "packets",
+              "pack", "packs", "punnet", "punnets", "bunch", "bunches",
+              "clove", "cloves", "sprig", "sprigs", "stick", "sticks",
+              "head", "heads", "slice", "slices", "rasher", "rashers",
+              "fillet", "fillets", "breast", "breasts", "thigh", "thighs",
+              "leg", "legs", "block", "blocks", "bag", "bags"}
+
+VAGUE_WORDS = {"pinch", "splash", "drizzle", "handful", "dash", "knob",
+               "glug", "squeeze", "few", "little", "good", "generous",
+               "large", "small", "medium", "extra"}
+
+# Trailing noise on an ingredient line. Everything after a comma is nearly
+# always preparation ("finely diced", "plus extra to serve") rather than a
+# different ingredient, so it is cut before matching.
+_PREP_RE = re.compile(
+    r"\b(?:finely|roughly|thinly|coarsely|freshly|lightly)?\s*"
+    r"(?:chopped|diced|sliced|minced|grated|crushed|peeled|trimmed|"
+    r"shredded|julienned|cubed|halved|quartered|beaten|melted|softened|"
+    r"drained|rinsed|to serve|to taste|to garnish|plus extra|optional)\b.*",
+    re.I,
+)
+
+
+@dataclass
+class Line:
+    """One ingredient line, read as far as it can be."""
+    raw: str
+    amount: float | None = None
+    unit: str = ""
+    item: str = ""
+    item_raw: str = ""         # before preparation words are stripped
+    matched: str = ""          # catalogue key it resolved to, if any
+    base: float | None = None  # amount in the catalogue item's own unit
+    cost: float = 0.0
+    staple: bool = False
+    free: bool = False         # a staple under its allowance
+    priced: bool = False
+    why_unpriced: str = ""
+
+
+def _strip_prep(text: str) -> str:
+    text = text.split(",")[0]
+    text = _PREP_RE.sub("", text)
+    text = re.sub(r"\(.*?\)", " ", text)          # "(about 2 medium)"
+    return re.sub(r"\s+", " ", text).strip(" .-")
+
+
+def parse_line(raw: str) -> Line:
+    """Split an ingredient line into amount, unit and ingredient name."""
+    line = Line(raw=raw)
+    text = (raw or "").strip()
+    if not text or text.endswith(":"):
+        line.why_unpriced = "heading"
+        return line
+
+    rest = text
+    amount: float | None = None
+
+    m = QUANTITY_RE.match(text)
+    if m and _parse_number(m.group("low")) is not None:
+        low = float(_parse_number(m.group("low")))
+        high = m.group("high") and _parse_number(m.group("high"))
+        # A range costs the midpoint. Taking the low end understates every
+        # recipe that says "2-3 tbsp" and the high end overstates it; the
+        # midpoint is wrong by half as much either way.
+        amount = (low + float(high)) / 2 if high else low
+        rest = m.group("rest")
+    else:
+        wm = re.match(rf"^\s*({'|'.join(WORD_NUMBERS)})\b(.*)$", text, re.I)
+        if wm and wm.group(1).lower() not in ("a", "an"):
+            amount = float(WORD_NUMBERS[wm.group(1).lower()])
+            rest = wm.group(2)
+        elif wm:
+            amount, rest = 1.0, wm.group(2)
+
+    rest = rest.strip()
+
+    # "400 g" and "400g" both leave the unit at the front of the remainder.
+    unit = ""
+    um = re.match(r"^([a-zA-Z]+)\.?\b(.*)$", rest)
+    if um:
+        word = um.group(1).lower()
+        if word in UNITS:
+            unit, rest = word, um.group(2)
+        elif word in PACK_WORDS or word in VAGUE_WORDS:
+            unit, rest = word, um.group(2)
+
+    # "2 x 400g tin" -- the pack size is the real amount.
+    xm = re.match(r"^x?\s*(\d+(?:\.\d+)?)\s*(g|kg|ml|l)\b(.*)$", rest, re.I)
+    if xm:
+        packs = amount or 1.0
+        amount = packs * float(xm.group(1))
+        unit, rest = xm.group(2).lower(), xm.group(3)
+
+    line.amount = amount
+    line.unit = unit
+
+    # A *word*, not a character class. `lstrip(" ofx")` is the obvious version
+    # and it is silently catastrophic: it strips any leading o, f or x, so
+    # "onions" became "nions", "olive oil" became "live oil" and "flour" became
+    # "lour" -- three ingredients that then matched nothing and were quietly
+    # dropped from the cost.
+    rest = re.sub(r"^\s*(?:of|x)\s+", "", rest, flags=re.I).strip()
+
+    # Pack words at the front describe the container, not the contents:
+    # "tin chopped tomatoes" is tomatoes.
+    rest = re.sub(r"^\s*(?:" + "|".join(PACK_WORDS) + r")\s+", "", rest, flags=re.I)
+
+    line.item_raw = rest.strip()
+    line.item = _strip_prep(rest)
+    if not line.item and not line.item_raw:
+        line.why_unpriced = "no ingredient name"
+    return line
+
+
+class Catalogue:
+    """The price list, indexed for matching against messy ingredient text."""
+
+    def __init__(self, data: dict):
+        self.data = data or {}
+        self.currency = self.data.get("currency", "NZD")
+        self.stores: list[str] = list(self.data.get("stores") or [])
+        self.primary: str = self.data.get("primary_store") or (
+            self.stores[0] if self.stores else "")
+        self.items: dict[str, dict] = self.data.get("items") or {}
+
+        # Longest alias first, so "spring onion" wins over "onion" and
+        # "sweet potato" over "potato". Matching the short one would be
+        # silently, plausibly wrong -- and cheaper, which hides it.
+        self._aliases: list[tuple[str, str]] = []
+        for key, spec in self.items.items():
+            for alias in [key] + list(spec.get("aliases") or []):
+                self._aliases.append((alias.lower(), key))
+        self._aliases.sort(key=lambda kv: -len(kv[0]))
+
+    def match(self, text: str) -> str:
+        hay = f" {text.lower()} "
+        for alias, key in self._aliases:
+            if re.search(r"\b" + re.escape(alias).replace(r"\ ", r"\s+")
+                         + r"e?s?\b", hay):
+                return key
+        return ""
+
+    # --- unit handling --------------------------------------------------------
+
+    def to_item_units(self, line: Line, key: str) -> tuple[float | None, str]:
+        """Convert a parsed line into the units the catalogue prices `key` in.
+
+        Returns (amount, reason-if-None).
+        """
+        spec = self.items.get(key) or {}
+        want = spec.get("unit", "g")
+
+        if line.amount is None:
+            return None, "no amount given"
+
+        kind, factor = UNITS.get(line.unit, ("", 0.0))
+
+        # A bare count: "2 onions", "4 chicken thighs".
+        if not kind:
+            if line.unit in VAGUE_WORDS:
+                return None, f"'{line.unit}' is not a measurable amount"
+            per = spec.get("g_per_unit")
+            if want == "each":
+                # Pack words that describe a portion of the thing are counted
+                # as units of it: 4 chicken thighs is 4 thighs, not 4 chickens,
+                # so the catalogue prices thighs and not birds.
+                return line.amount, ""
+            if per:
+                return line.amount * float(per), ""
+            return None, f"no unit size known for {key}"
+
+        base = line.amount * factor          # grams or millilitres
+
+        if kind == "mass":
+            if want == "g":
+                return base, ""
+            if want == "each" and spec.get("g_per_unit"):
+                return base / float(spec["g_per_unit"]), ""
+            if want == "ml":
+                density = float(spec.get("g_per_ml", 1.0))
+                return base / density, ""
+            return None, f"cannot convert grams to {want}"
+
+        # volume
+        if want == "ml":
+            return base, ""
+        if want == "g":
+            density = spec.get("g_per_ml")
+            if density is None:
+                return None, f"no density known for {key}"
+            return base * float(density), ""
+        if want == "each" and spec.get("ml_per_unit"):
+            return base / float(spec["ml_per_unit"]), ""
+        return None, f"cannot convert millilitres to {want}"
+
+    # --- prices ---------------------------------------------------------------
+
+    def unit_price(self, key: str, store: str, on_special: bool = True
+                   ) -> tuple[float | None, dict | None]:
+        """(price per single catalogue unit at this store, the special if any)."""
+        spec = self.items.get(key) or {}
+        entry = (spec.get("prices") or {}).get(store)
+        if not entry:
+            return None, None
+        per = float(entry.get("per", 1) or 1)
+        special = entry.get("special") if on_special else None
+        price = float(special["price"]) if special else float(entry.get("price", 0))
+        return price / per, special
+
+    def stores_with(self, key: str) -> list[str]:
+        return list(((self.items.get(key) or {}).get("prices") or {}).keys())
+
+
+@dataclass
+class RecipeCost:
+    total: float = 0.0
+    per_portion: float = 0.0
+    servings: int = 0
+    lines: list[Line] = field(default_factory=list)
+    unpriced: list[Line] = field(default_factory=list)
+    staples_free: list[str] = field(default_factory=list)
+    coverage: float = 0.0        # share of priceable lines we actually priced
+
+    @property
+    def confident(self) -> bool:
+        """Whether the number is worth showing without a caveat.
+
+        Coverage rather than a count, because a recipe of four ingredients with
+        one unpriced is a much worse estimate than one of twenty with the same.
+        """
+        return self.coverage >= 0.8
+
+
+def cost_recipe(ingredients: str, servings: int, cat: Catalogue,
+                store: str = "", specials: bool = True) -> RecipeCost:
+    """What one recipe costs at one store."""
+    store = store or cat.primary
+    out = RecipeCost(servings=max(1, servings or 1))
+    priceable = 0
+
+    for raw in (ingredients or "").splitlines():
+        if not raw.strip():
+            continue
+        line = parse_line(raw)
+        if line.why_unpriced == "heading":
+            continue
+        priceable += 1
+        out.lines.append(line)
+
+        key = cat.match(line.item_raw or line.item) or cat.match(line.item)
+        if not key:
+            line.why_unpriced = line.why_unpriced or "not in the price list"
+            out.unpriced.append(line)
+            continue
+        line.matched = key
+        spec = cat.items[key]
+
+        amount, reason = cat.to_item_units(line, key)
+        if amount is None:
+            # A staple written with no amount at all -- "olive oil", "salt",
+            # "basil" on its own line -- is a cupboard item by definition. It
+            # cannot be excessive if the recipe never said how much, so it is
+            # free rather than unpriced. Counting it as unpriced instead was
+            # dragging coverage down over exactly the lines that were never
+            # going to cost anything.
+            if spec.get("staple") and line.amount is None:
+                line.staple = line.free = line.priced = True
+                out.staples_free.append(key)
+                continue
+            line.why_unpriced = reason
+            out.unpriced.append(line)
+            continue
+        line.base = amount
+
+        # Pantry staples: the cupboard covers an ordinary amount, and only the
+        # excess above that allowance is charged. See the module docstring for
+        # why the excess and not the whole amount.
+        chargeable = amount
+        if spec.get("staple"):
+            line.staple = True
+            allowance = float(spec.get("free_allowance", 0) or 0)
+            if amount <= allowance:
+                line.free = True
+                line.priced = True
+                out.staples_free.append(key)
+                continue
+            chargeable = amount - allowance
+
+        unit_price, _ = cat.unit_price(key, store, specials)
+        if unit_price is None:
+            line.why_unpriced = f"no price at {store}"
+            out.unpriced.append(line)
+            continue
+
+        line.cost = chargeable * unit_price
+        line.priced = True
+        out.total += line.cost
+
+    out.coverage = (1.0 - len(out.unpriced) / priceable) if priceable else 0.0
+    out.per_portion = out.total / out.servings
+    return out
+
+
+@dataclass
+class Saving:
+    item: str
+    store: str
+    normal: float
+    special: float
+    saved: float
+    note: str = ""
+    until: str = ""
+
+
+def find_savings(ingredients_by_recipe: list[str], cat: Catalogue,
+                 primary: str = "", min_saving: float = 0.50
+                 ) -> list[Saving]:
+    """Items worth buying somewhere other than the usual shop this week.
+
+    Deliberately an exception list rather than a cheapest-basket optimiser. The
+    ask is to shop at one supermarket and be told when something is worth
+    breaking that for, and a solver that splits a list across three stores to
+    save four dollars answers a question nobody asked -- it costs two more car
+    trips than it saves.
+
+    Only *advertised specials* count. A rival being permanently a few cents
+    cheaper is not news, it is just a different shop.
+    """
+    primary = primary or cat.primary
+    wanted: dict[str, float] = {}
+
+    for ingredients in ingredients_by_recipe:
+        for raw in (ingredients or "").splitlines():
+            if not raw.strip() or raw.strip().endswith(":"):
+                continue
+            line = parse_line(raw)
+            key = cat.match(line.item_raw or line.item) or cat.match(line.item)
+            if not key:
+                continue
+            amount, reason = cat.to_item_units(line, key)
+            if amount is None:
+                continue
+            spec = cat.items[key]
+            if spec.get("staple"):
+                allowance = float(spec.get("free_allowance", 0) or 0)
+                amount = max(0.0, amount - allowance)
+            if amount > 0:
+                wanted[key] = wanted.get(key, 0.0) + amount
+
+    savings: list[Saving] = []
+    for key, amount in wanted.items():
+        here, _ = cat.unit_price(key, primary, True)
+        if here is None:
+            here, _ = cat.unit_price(key, primary, False)
+        if here is None:
+            continue
+
+        best: Saving | None = None
+        for store in cat.stores_with(key):
+            if store == primary:
+                continue
+            price, special = cat.unit_price(key, store, True)
+            if price is None or not special:
+                continue
+            saved = (here - price) * amount
+            if saved >= min_saving and (best is None or saved > best.saved):
+                best = Saving(item=key, store=store,
+                              normal=here * amount, special=price * amount,
+                              saved=saved, note=str(special.get("note", "")),
+                              until=str(special.get("until", "")))
+        if best:
+            savings.append(best)
+
+    savings.sort(key=lambda s: -s.saved)
+    return savings

@@ -10,7 +10,7 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
-from . import paprika, preferences, quantity, seasons, store, weather
+from . import paprika, preferences, pricing, quantity, seasons, store, weather
 from .planner import Slot, build_plan, classify, is_eligible
 from .scoring import Scored, score
 from .weather import DayWeather, describe, wanted_heartiness
@@ -156,6 +156,44 @@ def week_slots(forecast: list[DayWeather], start: date | None = None,
     return slots
 
 
+_CATALOGUE: pricing.Catalogue | None = None
+
+
+def catalogue() -> pricing.Catalogue:
+    """The price list, read once. Restart to pick up an edit to prices.json."""
+    global _CATALOGUE
+    if _CATALOGUE is None:
+        _CATALOGUE = pricing.Catalogue(store.load_prices())
+    return _CATALOGUE
+
+
+def cost_of(recipe_json: dict, servings: int, store_name: str = "") -> dict:
+    """Cost one recipe, as a payload the page can render.
+
+    Servings is the recipe's own yield, not the household size: cost *per
+    portion* is the comparable number, and dividing by how many people happen
+    to be eating would make the same recipe look cheaper for a smaller family.
+    """
+    cat = catalogue()
+    if not cat.items:
+        return {}
+    made = quantity.servings_factor(recipe_json.get("servings", ""), 1)[1]
+    c = pricing.cost_recipe(recipe_json.get("ingredients", ""),
+                            made or servings or 4, cat, store_name)
+    return {
+        "total": round(c.total, 2),
+        "per_portion": round(c.per_portion, 2),
+        "servings": c.servings,
+        "coverage": round(c.coverage, 2),
+        "confident": c.confident,
+        "unpriced": [{"text": l.raw, "why": l.why_unpriced} for l in c.unpriced],
+        "free_staples": sorted(set(c.staples_free)),
+        "currency": cat.currency,
+        "estimated": bool(cat.data.get("estimated")),
+        "store": store_name or cat.primary,
+    }
+
+
 def _servings_scale(servings: str, household: int) -> str:
     """How much of the recipe two people want, as a display string.
 
@@ -178,10 +216,12 @@ def _servings_scale(servings: str, household: int) -> str:
     return f"{ratio:.2f}".rstrip("0").rstrip(".")
 
 
-def _day_payload(choice, forecast_known: bool, household: int = 0) -> dict[str, Any]:
+def _day_payload(choice, forecast_known: bool, household: int = 0,
+                 store_name: str = "") -> dict[str, Any]:
     s, slot = choice.scored, choice.slot
     r = s.recipe
     return {
+        "cost": cost_of(r.to_json(), 0, store_name),
         "servings_scale": _servings_scale(r.servings or "", household),
         "date": slot.day.isoformat(),
         "day_name": slot.day.strftime("%A"),
@@ -252,10 +292,13 @@ def generate(config: dict, seed: int | None = None,
         "household_size": int(config.get("household_size", 0) or 0),
         "office_days": sorted(office_days),
         "library_size": len(library),
+        "money": None,
         "days": [_day_payload(c, c.slot.day in horizon,
-                              int(config.get("household_size", 0) or 0))
+                              int(config.get("household_size", 0) or 0),
+                              str(config.get("primary_store", "")))
                  for c in choices],
     }
+    plan["money"] = money_summary(plan, config)
     store.save_plan(plan)
     store.record_history(plan)
     return plan
@@ -293,13 +336,67 @@ def reroll(config: dict, iso_day: str) -> dict:
         "household_size": int(config.get("household_size", 0) or 0),
         "office_days": sorted(office_days),
         "library_size": len(library),
+        "money": None,
         "days": [_day_payload(c, c.slot.day in horizon,
-                              int(config.get("household_size", 0) or 0))
+                              int(config.get("household_size", 0) or 0),
+                              str(config.get("primary_store", "")))
                  for c in choices],
     }
+    plan["money"] = money_summary(plan, config)
     store.save_plan(plan)
     store.record_history(plan)
     return plan
+
+
+def money_summary(plan: dict, config: dict) -> dict[str, Any]:
+    """What the week costs at the usual shop, and what is worth leaving it for.
+
+    An exception list, not a cheapest-basket optimiser. The ask is to shop at
+    one supermarket and be told when something is worth breaking that for; a
+    solver that splits a list across three stores to save four dollars answers
+    a question nobody asked and costs two car trips to act on.
+    """
+    cat = catalogue()
+    if not cat.items or not plan.get("days"):
+        return {}
+
+    primary = str(config.get("primary_store") or cat.primary)
+    cache = store.load_cache()
+    by_uid = {r["uid"]: r for r in (cache.get("recipes") or [])}
+    ingredients = [by_uid[d["uid"]].get("ingredients", "")
+                   for d in plan["days"] if d.get("uid") in by_uid]
+
+    costs = [d.get("cost") or {} for d in plan["days"]]
+    priced = [c for c in costs if c.get("per_portion")]
+    people = int(config.get("household_size", 2) or 2)
+
+    savings = pricing.find_savings(
+        ingredients, cat, primary, float(config.get("min_saving", 0.50)))
+
+    return {
+        "currency": cat.currency,
+        "estimated": bool(cat.data.get("estimated")),
+        "updated": cat.data.get("updated", ""),
+        "store": primary,
+        "per_portion_avg": round(
+            sum(float(c.get("per_portion", 0)) for c in priced) / len(priced), 2)
+        if priced else 0.0,
+        # What the week costs to feed this household, which is the number people
+        # budget with -- distinct from cost per portion, which is what compares
+        # two recipes to each other.
+        "week_for_household": round(
+            sum(float(c.get("per_portion", 0)) for c in priced) * people, 2),
+        "people": people,
+        "priced_days": len(priced),
+        "low_confidence": sum(1 for c in costs if c and not c.get("confident")),
+        "savings": [
+            {"item": s.item, "store": s.store, "normal": round(s.normal, 2),
+             "special": round(s.special, 2), "saved": round(s.saved, 2),
+             "note": s.note, "until": s.until}
+            for s in savings
+        ],
+        "total_saving": round(sum(s.saved for s in savings), 2),
+    }
 
 
 def toggle_office_day(config: dict, iso_day: str) -> dict:

@@ -14,7 +14,7 @@ python run.py            # web app on http://127.0.0.1:5173
 python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
-python selftest.py       # 133 checks over scoring, planning and the forecast
+python selftest.py       # 184 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -169,6 +169,50 @@ preferences change which recipes exist.
 On top of all that: no recipe twice in a week, a penalty on anything eaten in
 the last few weeks, and a penalty on a week that leans on one protein.
 
+### What it costs
+
+Every night shows a **cost per portion**, and the week shows an average plus
+what it costs to feed the household. Those are two different numbers on purpose:
+cost per portion is what compares two recipes, and it is divided by the recipe's
+own yield rather than by how many people are eating, so the same dish does not
+look cheaper for a smaller family. The household figure is the one you budget
+with.
+
+> **The prices are estimates.** `prices.json` ships with hand-written, plausible
+> Auckland supermarket prices — including the "specials" — so the costing engine
+> has something to work on. Nothing here fetches live prices. Replace them with
+> what you actually pay before trusting a single figure; the page says so too.
+
+**Pantry staples are assumed to be in the cupboard.** Salt, oil, butter, flour,
+dried herbs and ground spices each carry a free allowance, and only the *excess*
+above it is charged. The excess and not the whole amount, so cost stays
+continuous: charging the full 250g the moment butter crosses 40g would make a
+recipe using 41g cost four dollars more than one using 39g, which is a cliff
+nobody could explain from the page. A staple with no amount written at all
+("olive oil" on its own line) cannot be excessive, so it is free.
+
+**Anything that cannot be priced is said out loud.** A line the parser cannot
+read, an ingredient not in the catalogue, a pack size it has no weight for —
+each is listed, and the night's cost is marked *approx* with its coverage. A
+cost estimate quietly missing its most expensive line is the one failure that
+looks exactly like a correct answer.
+
+### One shop, and when to leave it
+
+Everything is costed at `primary_store`. Separately, the planner checks each
+ingredient for an **advertised special** at another store and reports the ones
+worth the detour — biggest first, with what it saves and when it ends.
+
+This is an exception list, not a cheapest-basket optimiser, and that is the
+design rather than a limitation. A solver that splits a week's shopping across
+three supermarkets to save four dollars answers a question nobody asked: it
+costs two more car trips than it saves. `min_saving` (default $0.50) is the
+floor, so the report never becomes a list of ten-cent errands.
+
+Only advertised specials count. A rival being permanently a few cents cheaper is
+not news — it is just a different shop — and reporting it would bury the real
+specials in noise.
+
 ### Scaling to the household
 
 `household_size` — also on the preferences page — scales every recipe on the
@@ -203,6 +247,8 @@ Everything worth changing is in `config.json`:
 | `office_days` | Weekday names seeding a *fresh* week. Day to day, use the chips on the page. |
 | `day_types` | Ceiling, target and wall-clock cap for office / home / weekend. |
 | `preferred_sources` | Domains or site names to favour. Empty to switch off. |
+| `primary_store` | The one supermarket you shop at. Everything is costed here. |
+| `min_saving` | How much a special must save before it is worth mentioning. |
 | `avoid_ingredients` | Hard exclusions. Set these on the preferences page. |
 | `avoid_methods` | Cooking to avoid (heavy penalty, not a ban). Same page. |
 | `week_starts_on` | `"today"`, or a weekday name to plan the *next* one of those. |
@@ -227,6 +273,8 @@ which is the fastest way to see whether a change did what you wanted.
 run.py            entry point: web app, --sync, --plan, --scores
 selftest.py       offline checks; also the synthetic library
 selftest_extra.py checks for scaling, aversions, methods and seasons
+selftest_cost.py  checks for parsing, units, staples, costing and specials
+prices.json       the price catalogue - ESTIMATES, see the notes inside
 seed_demo.py      fill the cache with that library to try the app
 config.json       everything tunable
 mealplan/
@@ -236,6 +284,7 @@ mealplan/
   seasons.py      produce calendar + the hemisphere shift
   preferences.py  aversions, avoided methods, and the page's candidate lists
   quantity.py     parse and scale an ingredient line
+  pricing.py      ingredient -> item -> cost, staples, specials
   planner.py      day/recipe costs and the assignment search
   service.py      the operations, with no Flask in them
   store.py        config, recipe cache, plan and history on disk

@@ -241,3 +241,55 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
 }
 
 .pref-actions { margin-top: 1.2rem; }
+
+/* --- cost -------------------------------------------------------------------- */
+.cost {
+  font-size: 0.82rem; font-weight: 650; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.cost .per { font-weight: 400; font-size: 0.7rem; color: var(--ink-soft); }
+/* A number the engine could not fully price looks different from one it could,
+   because an estimate missing its most expensive line is the failure worth
+   seeing rather than the one worth hiding. */
+.cost.rough { color: var(--ink-soft); }
+.rough-mark {
+  font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em;
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 0.2rem;
+}
+
+.money {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 11px; padding: 0.9rem 1.1rem; margin-bottom: 1.25rem;
+}
+.money-head {
+  display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: baseline;
+}
+.money-head strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.money-head .save strong { color: var(--effort); }
+.money-label {
+  display: block; color: var(--ink-soft);
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+.savings { margin-top: 0.9rem; border-top: 1px solid var(--line); padding-top: 0.7rem; }
+.savings summary {
+  cursor: pointer; font-size: 0.82rem; font-weight: 600; color: var(--effort);
+}
+.savings ul { list-style: none; margin: 0.6rem 0 0; padding: 0; }
+.savings li {
+  display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: baseline;
+  font-size: 0.8rem; padding: 0.25rem 0; border-bottom: 1px solid var(--line);
+}
+.savings li:last-child { border-bottom: none; }
+.s-item { min-width: 9rem; text-transform: capitalize; font-weight: 550; }
+.s-store { min-width: 6rem; color: var(--ink-soft); }
+.s-price { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.s-saved { color: var(--effort); font-weight: 650; }
+.s-until, .s-note { color: var(--ink-soft); font-size: 0.72rem; }
+
+.money-warn {
+  margin: 0.8rem 0 0; padding: 0.5rem 0.7rem;
+  background: var(--error-bg); color: var(--error-ink);
+  border-radius: 7px; font-size: 0.76rem; line-height: 1.45;
+}
+.money-warn code { font-family: ui-monospace, Menlo, Consolas, monospace; }

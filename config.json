@@ -55,5 +55,7 @@
   "avoid_methods": [
     "deep frying",
     "shallow frying"
-  ]
+  ],
+  "primary_store": "New World",
+  "min_saving": 0.5
 }

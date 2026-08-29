@@ -23,10 +23,28 @@ from .store import DAY_NAMES
 from .weather import DayWeather, describe, wanted_heartiness
 
 
+# The three kinds of evening, which is what the effort rules are actually keyed
+# on. Not weekday-versus-weekend: a work-from-home Wednesday has an afternoon in
+# it that an office Wednesday does not, and lumping the two together is what
+# makes a planner tell you to braise something on a day you are on a train.
+#
+#   office   out of the house, short evening, hard cap on the clock
+#   home     a weekday at home -- a real cook is possible, nothing showy
+#   weekend  the slot reserved for the recipes worth an afternoon
+DAY_TYPES = ("office", "home", "weekend")
+
+DEFAULT_DAY_TYPE = {
+    "office": {"effort_ceiling": 0.30, "effort_target": 0.12, "max_minutes": 50},
+    "home": {"effort_ceiling": 0.62, "effort_target": 0.32, "max_minutes": None},
+    "weekend": {"effort_ceiling": 1.0, "effort_target": 0.78, "max_minutes": None},
+}
+
+
 @dataclass
 class Slot:
     day: date
     weather: DayWeather
+    day_type: str = "home"
 
     @property
     def day_name(self) -> str:
@@ -35,6 +53,30 @@ class Slot:
     @property
     def is_weekend(self) -> bool:
         return self.day.weekday() >= 5
+
+    @property
+    def is_office(self) -> bool:
+        return self.day_type == "office"
+
+
+def day_rules(slot: Slot, config: dict) -> dict:
+    """The effort rules for this slot's kind of evening."""
+    table = config.get("day_types") or {}
+    base = dict(DEFAULT_DAY_TYPE.get(slot.day_type, DEFAULT_DAY_TYPE["home"]))
+    base.update(table.get(slot.day_type) or {})
+    return base
+
+
+def classify(day: date, office_days: set[str]) -> str:
+    """Which kind of evening a date is, given the office days for that week.
+
+    Office wins over weekend: someone in the office on a Saturday has a short
+    evening whatever the calendar calls it.
+    """
+    name = DAY_NAMES[day.weekday()]
+    if name in office_days or day.isoformat() in office_days:
+        return "office"
+    return "weekend" if day.weekday() >= 5 else "home"
 
 
 @dataclass
@@ -54,21 +96,39 @@ def _effort_cost(s: Scored, slot: Slot, config: dict) -> float:
     and steep. Below the day's target is a soft one: an easy Saturday is a
     wasted opportunity, not a broken evening, so it is linear and gentle.
     """
-    ceiling = float(config["effort_ceiling"].get(slot.day_name, 1.0))
-    target = float(config["effort_target"].get(slot.day_name, 0.5))
+    rules = day_rules(slot, config)
+    ceiling = float(rules.get("effort_ceiling", 1.0))
+    target = float(rules.get("effort_target", 0.5))
 
     if s.effort > ceiling:
         cost = 4.0 * (s.effort - ceiling) ** 2 + 0.35
     elif s.effort < target:
         # Undershooting is a wasted slot rather than a broken evening, but how
-        # wasted depends on the day. A quiet Tuesday is fine, so weekdays pay a
-        # gentle linear price. A weekend is the only time there is *room* for a
-        # long cook, so a trivial Saturday spends the one slot that could have
-        # held the ambitious recipe, and nothing else in the week can take it --
-        # hence quadratic, which stays cheap for a near miss and turns
-        # expensive for a twenty-minute dinner on the night reserved for more.
+        # wasted depends on the evening. An easy office Tuesday is the point, so
+        # it pays a gentle linear price. A weekend is the only time there is
+        # *room* for a long cook, so a trivial Saturday spends the one slot that
+        # could have held the ambitious recipe, and nothing else in the week can
+        # take it -- hence quadratic, which stays cheap for a near miss and
+        # turns expensive for a twenty-minute dinner on the night reserved for
+        # more. A day at home sits between the two.
+        # All three day types share one curve and differ only by coefficient, so
+        # their priority is a fixed ratio at every shortfall instead of an
+        # emergent property of three shapes that cross each other somewhere.
+        # Both crossings were real and both were found by testing the ordering
+        # across the whole range rather than on averages: a square for the
+        # weekend against a 1.5 power for home met near gap 0.5, letting home
+        # days win the ambitious recipes away from the nights reserved for them;
+        # and a *linear* office penalty starts steeper than any fractional power
+        # does, so a small shortfall cost an office day more than a home day,
+        # which is backwards -- an office day wants the low-effort recipe.
+        #
+        # The exponent is below 2 because a square is almost free across the
+        # first third of the gap, which let a free evening quietly take the
+        # ten-minute salad. Below 2 keeps a near miss cheap while making a
+        # trivial dinner on a free night cost about what a weather mismatch does.
         gap = target - s.effort
-        cost = 2.2 * gap ** 2 if slot.is_weekend else 0.5 * gap
+        weight = {"weekend": 2.6, "home": 1.2}.get(slot.day_type, 0.45)
+        cost = weight * gap ** 1.5
     else:
         cost = 0.15 * (s.effort - target)
 
@@ -78,15 +138,22 @@ def _effort_cost(s: Scored, slot: Slot, config: dict) -> float:
 def _clock_cost(s: Scored, slot: Slot, config: dict) -> float:
     """A separate charge for the wall clock, which effort does not cover.
 
-    A three-hour braise is fifteen minutes of work and still cannot happen on a
-    Tuesday, because it has to go in the oven at half past three. So the cap is
-    on elapsed time, and anything that can be started in the morning and left --
-    a slow cooker, something made the night before -- is exempt from it however
-    long it runs.
+    A three-hour braise is fifteen minutes of work and still cannot happen on an
+    office day, because it has to go in the oven at half past three and nobody
+    is there. Anything that can be started in the morning and left -- a slow
+    cooker, something made the night before -- is exempt however long it runs,
+    which is what makes a slow cooker the ideal office-day dinner rather than a
+    borderline one.
+
+    The cap belongs to the day type, so it lifts entirely on a day at home. That
+    is the real gain from splitting office days out of "weekday": the braise
+    that is impossible on an office Wednesday is perfectly possible on a
+    work-from-home one, and the old model could not say so.
     """
-    if slot.is_weekend:
+    cap = day_rules(slot, config).get("max_minutes")
+    if cap is None:
         return 0.0
-    cap = float(config.get("weeknight_max_minutes", 75))
+    cap = float(cap)
     if s.unattended or not s.minutes or s.minutes <= cap:
         return 0.0
     # Steep, and per hour over: this is a "that evening does not work" problem
@@ -103,12 +170,27 @@ def _repeat_cost(s: Scored, recent: dict[str, int], weeks: int) -> float:
     return max(0.0, 1.0 - age / window)
 
 
+def _source_cost(s: Scored, config: dict) -> float:
+    """A discount for a recipe from a source you actually cook from.
+
+    Expressed as a cost on everything *else* rather than a bonus, so it cannot
+    drive a total negative and quietly outrank the constraints. At the default
+    weight it wins any close call and beats a modestly better fit, while a real
+    mismatch -- a stew on a hot night, a two-hour cook on an office day -- still
+    outweighs it. That is the intended shape: a preference, not a filter.
+    """
+    if not config.get("preferred_sources"):
+        return 0.0
+    return 0.0 if s.preferred_source else float(config["weights"].get("source", 0.0))
+
+
 def pair_cost(s: Scored, slot: Slot, config: dict, recent: dict[str, int]) -> float:
     w = config["weights"]
     want = wanted_heartiness(slot.weather)
     heart = abs(s.heartiness - want)
     return (
-        float(w.get("heartiness", 1.0)) * heart
+        _source_cost(s, config)
+        + float(w.get("heartiness", 1.0)) * heart
         + float(w.get("effort", 1.0)) * _effort_cost(s, slot, config)
         + float(w.get("repeat", 1.0))
         * _repeat_cost(s, recent, int(config.get("repeat_memory_weeks", 4)))
@@ -158,20 +240,27 @@ def _explain(s: Scored, slot: Slot, config: dict) -> list[str]:
     else:
         why.append("lighter than the day strictly needs")
 
-    ceiling = float(config["effort_ceiling"].get(slot.day_name, 1.0))
-    cap = float(config.get("weeknight_max_minutes", 75))
-    if slot.is_weekend and s.effort >= 0.55:
-        why.append("a weekend cook")
-    elif not slot.is_weekend and s.effort <= ceiling:
-        if s.unattended and s.minutes and s.minutes > cap:
-            why.append("start it in the morning and leave it")
-        else:
-            why.append("quick enough for a weeknight")
+    rules = day_rules(slot, config)
+    ceiling = float(rules.get("effort_ceiling", 1.0))
+    cap = rules.get("max_minutes")
+
+    if slot.day_type == "weekend" and s.effort >= 0.55:
+        why.append("worth the weekend")
+    elif slot.day_type == "office":
+        if s.unattended and cap and s.minutes and s.minutes > float(cap):
+            why.append("start it before you leave")
+        elif s.effort <= ceiling:
+            why.append("fast enough for an office day")
+    elif slot.day_type == "home" and s.effort >= 0.35:
+        why.append("you are home for this one")
 
     if s.hands_on and s.minutes and s.minutes - s.hands_on >= 45:
         why.append(f"{s.hands_on} min hands-on of {s.minutes}")
     elif s.minutes:
         why.append(f"{s.minutes} min total")
+
+    if s.preferred_source and config.get("preferred_sources"):
+        why.append(s.domain or "a favourite source")
     return why
 
 

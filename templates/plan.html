@@ -45,12 +45,22 @@
 {% if plan and plan.days %}
 <div class="week">
   {% for d in plan.days %}
-  <article class="day {% if d.is_weekend %}weekend{% endif %}">
+  <article class="day type-{{ d.day_type }}">
 
     <div class="day-head">
       <div>
         <h2>{{ d.day_name }}</h2>
         <span class="date">{{ d.short_date }}</span>
+        <form method="post" action="{{ url_for('office', iso_day=d.date) }}"
+              class="office-form">
+          <button type="submit"
+                  class="chip {% if d.day_type == 'office' %}on{% endif %}"
+                  title="{% if d.day_type == 'office' %}In the office — click if you are home this day{% else %}Click to mark this an office day{% endif %}">
+            {%- if d.day_type == 'office' %}&#128188; Office
+            {%- elif d.day_type == 'weekend' %}&#127968; Weekend
+            {%- else %}&#127969; Home{% endif -%}
+          </button>
+        </form>
       </div>
       <div class="wx" title="{{ d.weather.label }}">
         <span class="icon">{{ d.weather.icon }}</span>
@@ -88,10 +98,26 @@
       </div>
     </div>
 
+    {# A preferred recipe is always credited, even when there is no domain to
+       show: Paprika stores plenty of them as a typed-in site name with no URL,
+       and dropping the star for those hides the preference exactly where it is
+       least obvious it applied. #}
+    {% if d.preferred_source %}
+      <p class="src">&#11088; {{ d.domain or d.source or 'favourite source' }}</p>
+    {% elif d.domain %}
+      <p class="src muted">{{ d.domain }}</p>
+    {% elif d.source %}
+      <p class="src muted">{{ d.source }}</p>
+    {% endif %}
+
     <footer class="day-foot">
       <span class="meta">
         {%- if d.total_time %}{{ d.total_time }}{% elif d.minutes %}{{ d.minutes }} min{% endif -%}
-        {%- if d.servings %} &middot; serves {{ d.servings }}{% endif -%}
+        {%- if d.servings %} &middot; serves {{ d.servings }}
+          {%- if plan.household_size and d.servings_scale %}
+            <span class="scale" title="You are {{ plan.household_size }}; this recipe serves {{ d.servings }}">(&times;{{ d.servings_scale }})</span>
+          {%- endif -%}
+        {%- endif -%}
       </span>
       <form method="post" action="{{ url_for('reroll', iso_day=d.date) }}">
         <button type="submit" class="ghost small">Re-roll</button>

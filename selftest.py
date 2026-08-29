@@ -34,12 +34,20 @@ def check(label: str, condition: bool, detail: str = "") -> None:
 # --- a synthetic library ------------------------------------------------------
 
 def recipe(name, ingredients, directions, prep="", cook="", total="",
-           difficulty="", cats=None):
+           difficulty="", cats=None, source="", source_url="", servings="4"):
     return Recipe(uid=name.lower().replace(" ", "-"), name=name,
                   ingredients="\n".join(ingredients),
                   directions="\n".join(directions),
                   prep_time=prep, cook_time=cook, total_time=total,
-                  difficulty=difficulty, categories=cats or ["dinner"])
+                  difficulty=difficulty, categories=cats or ["dinner"],
+                  source=source, source_url=source_url, servings=servings)
+
+
+# A few of the library below come from the preferred source, written the three
+# different ways Paprika actually stores it: a full URL, a bare domain, and a
+# human-typed site name with no URL at all.
+RTE_URL = "https://www.recipetineats.com/some-recipe/"
+RTE_NAME = "RecipeTin Eats"
 
 
 LIBRARY = [
@@ -73,7 +81,8 @@ LIBRARY = [
             "oregano"],
            ["Heat the oven.", "Throw everything in a tray bake.",
             "Roast for 45 minutes."],
-           prep="10 mins", cook="45 mins", total="55 mins", difficulty="Easy"),
+           prep="10 mins", cook="45 mins", total="55 mins", difficulty="Easy",
+           source_url=RTE_URL),
 
     recipe("Cod with Courgette and Basil",
            ["4 cod fillets", "courgette", "basil", "lemon", "olive oil"],
@@ -85,7 +94,8 @@ LIBRARY = [
             "chipotle", "onion", "rice"],
            ["Brown the mince.", "Everything in the slow cooker.",
             "Cook on low 8 hours."],
-           prep="15 mins", cook="8 hrs", total="8 hrs 15 mins", difficulty="Easy"),
+           prep="15 mins", cook="8 hrs", total="8 hrs 15 mins", difficulty="Easy",
+           source_url=RTE_URL),
 
     recipe("Beef Wellington",
            ["1kg beef fillet", "puff pastry", "mushroom duxelles", "prosciutto",
@@ -102,14 +112,16 @@ LIBRARY = [
            ["rice noodles", "prawns", "tamarind", "fish sauce", "beansprouts",
             "peanuts", "lime", "egg"],
            ["Soak the noodles.", "Stir fry the prawns.", "Add sauce and toss."],
-           prep="15 mins", cook="10 mins", total="25 mins", difficulty="Easy"),
+           prep="15 mins", cook="10 mins", total="25 mins", difficulty="Easy",
+           source="recipetineats.com"),
 
     recipe("Lamb Tagine with Apricots",
            ["1kg lamb shoulder", "apricots", "ras el hanout", "chickpeas",
             "onion", "couscous", "almonds", "coriander"],
            ["Brown the lamb.", "Add spices.", "Simmer for 2 hours.",
             "Add apricots.", "Serve with couscous."],
-           prep="25 mins", cook="2 hrs 15 mins", total="2 hrs 40 mins"),
+           prep="25 mins", cook="2 hrs 15 mins", total="2 hrs 40 mins",
+           source=RTE_NAME),
 
     recipe("Mushroom Risotto",
            ["arborio rice", "mushrooms", "white wine", "parmesan", "butter",
@@ -137,19 +149,38 @@ LIBRARY = [
 ]
 
 CONFIG = {
-    "location": "Bristol, GB",
-    "effort_ceiling": {"monday": 0.35, "tuesday": 0.35, "wednesday": 0.35,
-                       "thursday": 0.35, "friday": 0.55, "saturday": 1.0,
-                       "sunday": 1.0},
-    "effort_target": {"monday": 0.15, "tuesday": 0.15, "wednesday": 0.15,
-                      "thursday": 0.20, "friday": 0.40, "saturday": 0.80,
-                      "sunday": 0.70},
-    "weights": {"heartiness": 1.0, "effort": 1.2, "repeat": 0.8, "variety": 0.6},
+    "location": "Auckland, NZ",
+    "latitude": -36.848, "longitude": 174.762,
+    "household_size": 2,
+    "office_days": ["tuesday", "wednesday", "thursday"],
+    "day_types": {
+        "office": {"effort_ceiling": 0.30, "effort_target": 0.12,
+                   "max_minutes": 50},
+        "home": {"effort_ceiling": 0.62, "effort_target": 0.32,
+                 "max_minutes": None},
+        "weekend": {"effort_ceiling": 1.0, "effort_target": 0.78,
+                    "max_minutes": None},
+    },
+    "preferred_sources": ["recipetineats.com"],
+    "weights": {"heartiness": 1.0, "effort": 1.2, "repeat": 0.8,
+                "variety": 0.6, "source": 0.45},
     "repeat_memory_weeks": 4,
-    "weeknight_max_minutes": 75,
     "exclude_categories": ["dessert", "breakfast"],
     "heartiness_overrides": {}, "effort_overrides": {},
 }
+
+OFFICE = {"tuesday", "wednesday", "thursday"}
+
+
+def week_of(monday, tmax=16.0, precip=0.0, chance=0, office=OFFICE):
+    """Seven slots from a Monday, with day types applied."""
+    from mealplan.planner import classify
+    out = []
+    for i in range(7):
+        d = monday + timedelta(days=i)
+        out.append(Slot(d, weather_day(d, tmax, precip, chance),
+                        day_type=classify(d, office)))
+    return out
 
 
 def scored_library():
@@ -224,21 +255,22 @@ def test_weekday_effort():
     lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
     monday = next_monday()
     # A uniformly mild week, so effort is the only thing deciding anything.
-    slots = [Slot(monday + timedelta(days=i),
-                  weather_day(monday + timedelta(days=i), 16.0)) for i in range(7)]
+    slots = week_of(monday, 16.0)
     plan = build_plan(lib, slots, CONFIG, {}, seed=1)
 
-    weekday = [c for c in plan if not c.slot.is_weekend]
-    weekend = [c for c in plan if c.slot.is_weekend]
+    office = [c for c in plan if c.slot.day_type == "office"]
+    weekend = [c for c in plan if c.slot.day_type == "weekend"]
 
-    over = [c for c in weekday if c.scored.effort > CONFIG["effort_ceiling"][c.slot.day_name]]
-    check("no weeknight is over its effort ceiling", not over,
+    from mealplan.planner import day_rules
+    over = [c for c in office
+            if c.scored.effort > day_rules(c.slot, CONFIG)["effort_ceiling"]]
+    check("no office day is over its effort ceiling", not over,
           ", ".join(f"{c.slot.day_name}={c.scored.name}({c.scored.effort:.2f})" for c in over))
 
-    avg_wd = sum(c.scored.effort for c in weekday) / len(weekday)
+    avg_of = sum(c.scored.effort for c in office) / len(office)
     avg_we = sum(c.scored.effort for c in weekend) / len(weekend)
-    check("weekend averages more effort than weekdays", avg_we > avg_wd,
-          f"weekday {avg_wd:.2f} vs weekend {avg_we:.2f}")
+    check("weekend averages more effort than office days", avg_we > avg_of,
+          f"office {avg_of:.2f} vs weekend {avg_we:.2f}")
 
     hardest = max(plan, key=lambda c: c.scored.effort)
     check("the hardest recipe of the week lands on a weekend",
@@ -248,10 +280,9 @@ def test_weekday_effort():
     # The weekend slots have to hold up against weather that wants light food,
     # or a warm Saturday quietly becomes another weeknight.
     monday = next_monday()
-    hot = [Slot(monday + timedelta(days=i),
-                weather_day(monday + timedelta(days=i), 28.0)) for i in range(7)]
-    hot_plan = build_plan(lib, hot, CONFIG, {}, seed=8)
-    lazy = [c for c in hot_plan if c.slot.is_weekend and c.scored.effort < 0.3]
+    hot_plan = build_plan(lib, week_of(monday, 28.0), CONFIG, {}, seed=8)
+    lazy = [c for c in hot_plan
+            if c.slot.day_type == "weekend" and c.scored.effort < 0.3]
     check("a hot weekend still gets a real cook, not a salad", not lazy,
           ", ".join(f"{c.slot.day_name}={c.scored.name}"
                     f"({c.scored.effort:.2f})" for c in lazy))
@@ -272,16 +303,14 @@ def test_weeknight_clock():
           f"hands_on={stew.hands_on} total={stew.minutes}")
 
     monday = next_monday()
-    slots = [Slot(monday + timedelta(days=i),
-                  weather_day(monday + timedelta(days=i), 5.0)) for i in range(7)]
     plan = build_plan([s for s in scored_library() if is_dinner(s, CONFIG)],
-                      slots, CONFIG, {}, seed=7)
+                      week_of(monday, 5.0), CONFIG, {}, seed=7)
 
-    cap = CONFIG["weeknight_max_minutes"]
+    cap = CONFIG["day_types"]["office"]["max_minutes"]
     late = [c for c in plan
-            if not c.slot.is_weekend and not c.scored.unattended
+            if c.slot.day_type == "office" and not c.scored.unattended
             and (c.scored.minutes or 0) > cap]
-    check("no attended long cook lands on a weeknight", not late,
+    check("no attended long cook lands on an office day", not late,
           ", ".join(f"{c.slot.day_name}={c.scored.name}"
                     f"({c.scored.minutes}min)" for c in late))
 
@@ -293,9 +322,11 @@ def test_weeknight_clock():
     # day be "fixed" by breaking the exemption.
     from mealplan.planner import _clock_cost
     tuesday = Slot(monday + timedelta(days=1),
-                   weather_day(monday + timedelta(days=1), 5.0))
+                   weather_day(monday + timedelta(days=1), 5.0),
+                   day_type="office")
     saturday = Slot(monday + timedelta(days=5),
-                    weather_day(monday + timedelta(days=5), 5.0))
+                    weather_day(monday + timedelta(days=5), 5.0),
+                    day_type="weekend")
     check("a 4hr braise is charged for the clock on a weeknight",
           _clock_cost(stew, tuesday, CONFIG) > 0.5,
           f"{_clock_cost(stew, tuesday, CONFIG):.2f}")
@@ -311,13 +342,8 @@ def test_weather_drives_choice():
     lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
     monday = next_monday()
 
-    def week(tmax, precip=0.0, chance=0):
-        return [Slot(monday + timedelta(days=i),
-                     weather_day(monday + timedelta(days=i), tmax, precip, chance))
-                for i in range(7)]
-
-    hot_plan = build_plan(lib, week(30.0), CONFIG, {}, seed=2)
-    cold_plan = build_plan(lib, week(2.0), CONFIG, {}, seed=2)
+    hot_plan = build_plan(lib, week_of(monday, 30.0), CONFIG, {}, seed=2)
+    cold_plan = build_plan(lib, week_of(monday, 2.0), CONFIG, {}, seed=2)
 
     hot_avg = sum(c.scored.heartiness for c in hot_plan) / len(hot_plan)
     cold_avg = sum(c.scored.heartiness for c in cold_plan) / len(cold_plan)
@@ -329,9 +355,12 @@ def test_weather_drives_choice():
     check("the two weeks are not the same menu", hot_names != cold_names)
 
     # Within one mixed week, the hot day should be lighter than the cold day.
+    from mealplan.planner import classify
     mixed = [Slot(monday + timedelta(days=i),
                   weather_day(monday + timedelta(days=i),
-                              30.0 if i in (0, 1) else 2.0)) for i in range(7)]
+                              30.0 if i in (0, 1) else 2.0),
+                  day_type=classify(monday + timedelta(days=i), OFFICE))
+             for i in range(7)]
     mixed_plan = build_plan(lib, mixed, CONFIG, {}, seed=3)
     warm_days = [c.scored.heartiness for c in mixed_plan[:2]]
     cold_days = [c.scored.heartiness for c in mixed_plan[2:5]]
@@ -344,8 +373,7 @@ def test_no_repeats_and_variety():
     print("\nrepeats and variety")
     lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
     monday = next_monday()
-    slots = [Slot(monday + timedelta(days=i),
-                  weather_day(monday + timedelta(days=i), 12.0)) for i in range(7)]
+    slots = week_of(monday, 12.0)
     plan = build_plan(lib, slots, CONFIG, {}, seed=4)
 
     uids = [c.scored.uid for c in plan]
@@ -370,6 +398,136 @@ def test_no_repeats_and_variety():
     now_in = "beef-shin-stew-with-dumplings" in {c.scored.uid for c in penalised}
     check("a recipe eaten yesterday is pushed out (or was never in)",
           not (was_in and now_in), "still present despite the repeat penalty")
+
+
+def test_day_types():
+    print("\noffice / home / weekend")
+    from mealplan.planner import classify, _clock_cost, day_rules
+    monday = next_monday()
+
+    check("a configured office weekday classifies as office",
+          classify(monday + timedelta(days=1), OFFICE) == "office")
+    check("a weekday not in the office is a home day",
+          classify(monday, OFFICE) == "home")
+    check("Saturday is a weekend",
+          classify(monday + timedelta(days=5), OFFICE) == "weekend")
+    check("an explicit ISO date also marks an office day",
+          classify(monday, {(monday).isoformat()}) == "office")
+    check("office beats weekend if you are in on a Saturday",
+          classify(monday + timedelta(days=5),
+                   {(monday + timedelta(days=5)).isoformat()}) == "office")
+
+    lib = {s.name: s for s in scored_library()}
+    stew = lib["Beef Shin Stew with Dumplings"]
+
+    def slot(offset, kind):
+        d = monday + timedelta(days=offset)
+        return Slot(d, weather_day(d, 12.0), day_type=kind)
+
+    # The whole point of splitting office days out of "weekday": the braise that
+    # cannot happen on an office Wednesday is fine on a work-from-home one.
+    check("a 4hr braise is blocked on an office day",
+          _clock_cost(stew, slot(2, "office"), CONFIG) > 0.5)
+    check("...and is allowed on a day at home",
+          _clock_cost(stew, slot(2, "home"), CONFIG) == 0.0)
+
+    check("a home day tolerates more effort than an office day",
+          day_rules(slot(0, "home"), CONFIG)["effort_ceiling"]
+          > day_rules(slot(0, "office"), CONFIG)["effort_ceiling"])
+    check("a weekend aims higher than a home day",
+          day_rules(slot(0, "weekend"), CONFIG)["effort_target"]
+          > day_rules(slot(0, "home"), CONFIG)["effort_target"])
+
+    # The three under-target penalties must stay in priority order at *every*
+    # gap, not just on average. The first version used a different exponent per
+    # day type, and the weekend and home curves crossed around gap 0.5 -- home
+    # days then won the ambitious recipes away from the nights reserved for
+    # them, which no average-based check could see.
+    from mealplan.planner import _effort_cost
+    from dataclasses import replace as _replace
+    inversions = []
+    for gap in (0.05, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9):
+        costs = {}
+        for kind in ("office", "home", "weekend"):
+            rules = day_rules(slot(0, kind), CONFIG)
+            effort = max(0.0, rules["effort_target"] - gap)
+            probe = _replace(stew, effort=effort, minutes=30, unattended=True)
+            costs[kind] = _effort_cost(probe, slot(0, kind), CONFIG)
+        if not costs["weekend"] > costs["home"] > costs["office"]:
+            inversions.append((gap, {k: round(v, 3) for k, v in costs.items()}))
+    check("weekend > home > office penalty at every shortfall",
+          not inversions, str(inversions))
+
+    # A week where every weekday is an office day should be measurably easier
+    # than one where none are -- that is the whole feature, end to end.
+    all_lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
+    busy = build_plan(all_lib, week_of(monday, 12.0,
+                                       office={"monday", "tuesday", "wednesday",
+                                               "thursday", "friday"}),
+                      CONFIG, {}, seed=11)
+    wfh = build_plan(all_lib, week_of(monday, 12.0, office=set()),
+                     CONFIG, {}, seed=11)
+    busy_wd = [c.scored.effort for c in busy if not c.slot.is_weekend]
+    wfh_wd = [c.scored.effort for c in wfh if not c.slot.is_weekend]
+    check("a week of office days is easier than a week working from home",
+          sum(busy_wd) / len(busy_wd) < sum(wfh_wd) / len(wfh_wd),
+          f"office {sum(busy_wd)/len(busy_wd):.2f} vs home {sum(wfh_wd)/len(wfh_wd):.2f}")
+
+    # And within a single ordinary week, not only between two extreme ones.
+    # This is the check that catches a home day quietly taking the ten-minute
+    # salad because its under-target penalty was too soft to notice.
+    mixed = build_plan(all_lib, week_of(monday, 12.0), CONFIG, {}, seed=13)
+    home = [c.scored.effort for c in mixed if c.slot.day_type == "home"]
+    work = [c.scored.effort for c in mixed if c.slot.day_type == "office"]
+    check("in one week, home nights out-effort office nights",
+          sum(home) / len(home) > sum(work) / len(work),
+          f"home {sum(home)/len(home):.2f} vs office {sum(work)/len(work):.2f}")
+
+
+def test_source_preference():
+    print("\npreferred source")
+    from mealplan.scoring import matches_source, source_domain
+    from mealplan.planner import _source_cost
+
+    lib = {s.name: s for s in scored_library()}
+    check("a full URL matches", lib["Chicken Traybake with Lemon"].preferred_source)
+    check("a bare domain matches", lib["Prawn Pad Thai"].preferred_source)
+    check("a human-typed site name matches", lib["Lamb Tagine with Apricots"].preferred_source)
+    check("an unsourced recipe does not", not lib["Beef Wellington"].preferred_source)
+
+    check("www. is stripped from the domain",
+          source_domain(Recipe(uid="x", name="x",
+                               source_url="https://www.recipetineats.com/a/"))
+          == "recipetineats.com")
+    check("a subdomain of a preferred host still matches",
+          matches_source(Recipe(uid="x", name="x",
+                                source_url="https://blog.recipetineats.com/a/"),
+                         ["recipetineats.com"]))
+    check("an unrelated site does not match",
+          not matches_source(Recipe(uid="x", name="x",
+                                    source_url="https://example.com/a/"),
+                             ["recipetineats.com"]))
+
+    check("a preferred recipe costs less than an equivalent one",
+          _source_cost(lib["Prawn Pad Thai"], CONFIG)
+          < _source_cost(lib["Beef Wellington"], CONFIG))
+    check("the preference is off when no sources are configured",
+          _source_cost(lib["Beef Wellington"], {**CONFIG,
+                                                "preferred_sources": []}) == 0.0)
+
+    # It has to actually change a plan, and it has to remain a preference: a
+    # weight that filters is a different feature and a much worse one.
+    monday = next_monday()
+    all_lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
+    with_pref = build_plan(all_lib, week_of(monday, 14.0), CONFIG, {}, seed=12)
+    without = build_plan(all_lib, week_of(monday, 14.0),
+                         {**CONFIG, "preferred_sources": []}, {}, seed=12)
+    n_with = sum(1 for c in with_pref if c.scored.preferred_source)
+    n_without = sum(1 for c in without if c.scored.preferred_source)
+    check("preferring a source puts more of it in the week",
+          n_with >= n_without, f"{n_with} with vs {n_without} without")
+    check("...but does not take the week over",
+          n_with < 7, f"{n_with}/7 from the preferred source")
 
 
 def test_history_ignores_the_future():
@@ -424,8 +582,7 @@ def test_pinning():
     print("\nre-roll keeps the rest of the week")
     lib = [s for s in scored_library() if is_dinner(s, CONFIG)]
     monday = next_monday()
-    slots = [Slot(monday + timedelta(days=i),
-                  weather_day(monday + timedelta(days=i), 14.0)) for i in range(7)]
+    slots = week_of(monday, 14.0)
     plan = build_plan(lib, slots, CONFIG, {}, seed=5)
 
     target = plan[2]
@@ -444,8 +601,7 @@ def test_small_library():
     print("\nedge cases")
     lib = [s for s in scored_library() if is_dinner(s, CONFIG)][:7]
     monday = next_monday()
-    slots = [Slot(monday + timedelta(days=i),
-                  weather_day(monday + timedelta(days=i), 14.0)) for i in range(7)]
+    slots = week_of(monday, 14.0)
     plan = build_plan(lib, slots, CONFIG, {}, seed=6)
     check("exactly seven recipes fills exactly seven days", len(plan) == 7)
 
@@ -461,8 +617,8 @@ def test_live_weather():
     print("\nlive Open-Meteo call")
     try:
         from mealplan import weather as wx
-        lat, lon, pretty = wx.geocode("Bristol, GB")
-        check("geocoded Bristol", -90 <= lat <= 90 and -180 <= lon <= 180,
+        lat, lon, pretty = wx.geocode("Auckland, NZ")
+        check("geocoded Auckland", -90 <= lat <= 90 and -180 <= lon <= 180,
               f"{lat},{lon}")
         fc = wx.forecast(lat, lon, days=7)
         check("got 7 days of forecast", len(fc) == 7, str(len(fc)))
@@ -483,7 +639,9 @@ if __name__ == "__main__":
     test_time_parsing()
     test_scoring()
     test_weather_curve()
+    test_day_types()
     test_weekday_effort()
+    test_source_preference()
     test_weeknight_clock()
     test_weather_drives_choice()
     test_no_repeats_and_variety()

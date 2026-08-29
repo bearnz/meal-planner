@@ -90,7 +90,30 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
   border-radius: 11px; padding: 1rem 1.05rem 0.85rem;
   display: flex; flex-direction: column;
 }
-.day.weekend { background: var(--weekend); border-color: var(--accent-soft); }
+/* The three kinds of evening, each with its own weight on the page. An office
+   day is the plain one; a weekend is the warm one; a weekday at home sits
+   between, marked only by its left edge. */
+.day.type-weekend { background: var(--weekend); border-color: var(--accent-soft); }
+.day.type-home { border-left: 3px solid var(--effort); }
+.day.type-office { border-left: 3px solid var(--line); }
+
+.office-form { display: inline; margin: 0; }
+.chip {
+  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
+  padding: 0.12rem 0.42rem; border-radius: 999px;
+  background: transparent; color: var(--ink-soft);
+  border: 1px solid var(--line); cursor: pointer;
+  margin-left: 0.4rem; vertical-align: 1px;
+}
+.chip:hover { border-color: var(--accent); color: var(--ink); filter: none; }
+.chip.on {
+  background: var(--accent-soft); color: var(--accent);
+  border-color: var(--accent-soft);
+}
+
+.src { margin: -0.4rem 0 0.7rem; font-size: 0.72rem; color: var(--accent); }
+.src.muted { color: var(--ink-soft); opacity: 0.75; }
+.scale { color: var(--accent); font-weight: 600; }
 
 .day-head {
   display: flex; justify-content: space-between; align-items: flex-start;

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>This week's dinners</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="bar">
+  <div>
+    <h1>This week's dinners</h1>
+    {% if plan %}
+      <p class="sub">
+        {{ plan.location }}
+        &middot; {{ plan.library_size }} recipes in play
+        {% if plan.rerolled %}&middot; re-rolled {{ plan.rerolled[11:16] }}
+        {% elif plan.generated %}&middot; planned {{ plan.generated[:10] }}{% endif %}
+      </p>
+    {% endif %}
+  </div>
+  <div class="actions">
+    <form method="post" action="{{ url_for('sync') }}">
+      <button type="submit" class="ghost">Sync from Paprika</button>
+    </form>
+    <form method="post" action="{{ url_for('regenerate') }}">
+      <button type="submit">Re-plan the week</button>
+    </form>
+    <a class="ghost button" href="{{ url_for('shopping') }}">Shopping list</a>
+  </div>
+</header>
+
+{% if error %}
+  <div class="error">
+    <strong>Something went wrong.</strong>
+    <p>{{ error }}</p>
+  </div>
+{% endif %}
+
+{% if cache and cache.fetched %}
+  <p class="note">Recipes last synced {{ cache.fetched.replace('T', ' ') }}.</p>
+{% endif %}
+
+{% if plan and plan.days %}
+<div class="week">
+  {% for d in plan.days %}
+  <article class="day {% if d.is_weekend %}weekend{% endif %}">
+
+    <div class="day-head">
+      <div>
+        <h2>{{ d.day_name }}</h2>
+        <span class="date">{{ d.short_date }}</span>
+      </div>
+      <div class="wx" title="{{ d.weather.label }}">
+        <span class="icon">{{ d.weather.icon }}</span>
+        <span class="temp">{{ d.weather.temp_max | round | int }}&deg;</span>
+        {% if d.weather.is_wet %}
+          <span class="wet">{{ d.weather.precip_chance }}%</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <h3 class="recipe">
+      {% if d.source_url %}
+        <a href="{{ d.source_url }}" target="_blank" rel="noopener">{{ d.name }}</a>
+      {% else %}
+        {{ d.name }}
+      {% endif %}
+    </h3>
+
+    <p class="why">{{ d.why | join(' &middot; ') | safe }}</p>
+
+    <div class="meters">
+      <div class="meter">
+        <span class="label">Hearty</span>
+        <div class="track">
+          <div class="fill" style="width: {{ (d.heartiness * 100) | round | int }}%"></div>
+          <div class="want" style="left: {{ (d.wanted_heartiness * 100) | round | int }}%"
+               title="what the forecast asked for"></div>
+        </div>
+      </div>
+      <div class="meter">
+        <span class="label">Effort</span>
+        <div class="track">
+          <div class="fill effort" style="width: {{ (d.effort * 100) | round | int }}%"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="day-foot">
+      <span class="meta">
+        {%- if d.total_time %}{{ d.total_time }}{% elif d.minutes %}{{ d.minutes }} min{% endif -%}
+        {%- if d.servings %} &middot; serves {{ d.servings }}{% endif -%}
+      </span>
+      <form method="post" action="{{ url_for('reroll', iso_day=d.date) }}">
+        <button type="submit" class="ghost small">Re-roll</button>
+      </form>
+    </footer>
+
+    {% if not d.forecast_known %}
+      <p class="note tiny">Beyond the forecast &mdash; using the last known day.</p>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+{% elif not error %}
+  <p class="note">No plan yet. Sync your recipes, then re-plan the week.</p>
+{% endif %}
+
+</body>
+</html>

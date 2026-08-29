@@ -1,0 +1,99 @@
+"""The local web app. Binds to localhost only; there is nothing to secure here
+because there is nothing listening beyond this machine.
+"""
+
+from __future__ import annotations
+
+import traceback
+
+from flask import Flask, jsonify, redirect, render_template, request, url_for
+
+from . import service, store
+
+app = Flask(
+    __name__,
+    template_folder="../templates",
+    static_folder="../static",
+)
+
+
+def _config_or_error():
+    try:
+        return store.load_config(), None
+    except (FileNotFoundError, ValueError) as exc:
+        return None, str(exc)
+
+
+@app.route("/")
+def index():
+    config, err = _config_or_error()
+    if err:
+        return render_template("plan.html", plan=None, error=err, cache=None)
+
+    plan = store.load_plan()
+    cache = store.load_cache()
+    error = None
+    if not plan.get("days"):
+        try:
+            plan = service.generate(config)
+        except Exception as exc:  # noqa: BLE001 - the page is the error report
+            app.logger.error("generate failed: %s", traceback.format_exc())
+            plan, error = None, str(exc)
+    return render_template("plan.html", plan=plan, error=error, cache=cache)
+
+
+@app.post("/sync")
+def sync():
+    try:
+        service.sync_recipes()
+    except Exception as exc:  # noqa: BLE001
+        app.logger.error("sync failed: %s", traceback.format_exc())
+        return render_template("plan.html", plan=store.load_plan(),
+                               error=f"Sync failed: {exc}",
+                               cache=store.load_cache()), 502
+    return redirect(url_for("index"))
+
+
+@app.post("/regenerate")
+def regenerate():
+    config, err = _config_or_error()
+    if err:
+        return render_template("plan.html", plan=None, error=err, cache=None), 400
+    try:
+        service.generate(config)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.error("regenerate failed: %s", traceback.format_exc())
+        return render_template("plan.html", plan=store.load_plan(),
+                               error=str(exc), cache=store.load_cache()), 500
+    return redirect(url_for("index"))
+
+
+@app.post("/reroll/<iso_day>")
+def reroll(iso_day: str):
+    config, err = _config_or_error()
+    if err:
+        return jsonify({"error": err}), 400
+    try:
+        plan = service.reroll(config, iso_day)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.error("reroll failed: %s", traceback.format_exc())
+        return jsonify({"error": str(exc)}), 500
+    if request.headers.get("Accept", "").startswith("application/json"):
+        return jsonify(plan)
+    return redirect(url_for("index"))
+
+
+@app.route("/shopping")
+def shopping():
+    plan = store.load_plan()
+    return render_template("shopping.html", groups=service.shopping_list(plan),
+                           plan=plan)
+
+
+@app.route("/api/plan")
+def api_plan():
+    return jsonify(store.load_plan())
+
+
+def run(host: str = "127.0.0.1", port: int = 5173, debug: bool = False) -> None:
+    app.run(host=host, port=port, debug=debug)

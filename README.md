@@ -6,14 +6,15 @@ local weather forecast and where the day falls in the week.
 Cold or wet nights get heartier food; warm dry ones get lighter food. Office
 days get things you can actually put together after a commute; days at home can
 take longer; the weekend gets the recipes worth spending an afternoon on.
-Recipes from sources you like are favoured. Runs entirely on your own machine.
+Recipes from sources you like are favoured, produce in season is favoured,
+and nothing you will not eat gets through. Runs entirely on your own machine.
 
 ```
 python run.py            # web app on http://127.0.0.1:5173
 python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
-python selftest.py       # 75 checks over scoring, planning and the forecast
+python selftest.py       # 133 checks over scoring, planning and the forecast
 ```
 
 ## Setup
@@ -123,8 +124,69 @@ close call and beats a modestly better fit, while a real mismatch — a stew on 
 hot night, a two-hour cook on an office day — still outweighs it. Raise
 `weights.source` to lean harder; empty `preferred_sources` to switch it off.
 
+### Seasonality
+
+Produce at its peak is favoured, out-of-season produce is mildly penalised, and
+a recipe of flour, stock and chicken is neither — it is genuinely not a seasonal
+question, and scoring it either way would rank every pasta dish below every
+salad in February for having no opinion.
+
+**The hemisphere is the whole trick.** Every published seasonality calendar is
+northern, and applying one unshifted in New Zealand recommends asparagus and
+strawberries in the depths of winter — exactly wrong, twice a year, and
+confidently. The table is authored in northern months and shifted six months
+when `latitude` is negative. That is the entire correction and it happens in one
+place, so nothing else has to know which hemisphere it is in.
+
+In season is worth more than out of season is worth avoiding — a recipe built on
+what is good right now is a real win, while one out-of-season lemon is just
+slightly worse shopping. The month used is the month the *plan* opens in, not
+the machine's today, because a plan generated on the 30th runs into the next one.
+
+### Aversions, and cooking you would rather avoid
+
+Two kinds of dislike, handled two ways, because they are two different
+statements:
+
+- **Ingredient aversions** are "we do not eat this", so the recipe leaves the
+  library entirely. A weighted dislike would still put the thing on the table on
+  a week when nothing else fits — exactly the outcome the setting exists to
+  prevent. Matched over ingredients and method, not just the title: nothing in
+  "Beef Wellington" says mushroom, and it is built on a duxelles.
+- **Cooking methods** — deep and shallow frying, off by default — are a strong
+  preference. Deep frying is not poison, it is a Tuesday you would rather not
+  have, so it is a heavy penalty and an otherwise-perfect recipe can still win.
+  Shallow frying almost never says so in the title, so detection reads the method
+  for an oil depth, a frying temperature, or a pan being filled.
+
+Both are set on **the preferences page**, which lists every candidate with the
+number of recipes it would affect. That count is the point: "exclude mushrooms"
+is a different decision when it costs four recipes than when it costs forty, and
+before you click is the only honest place to say so. A free-text field covers
+anything the curated list misses. Saving re-plans the week, since the
+preferences change which recipes exist.
+
 On top of all that: no recipe twice in a week, a penalty on anything eaten in
 the last few weeks, and a penalty on a week that leans on one protein.
+
+### Scaling to the household
+
+`household_size` — also on the preferences page — scales every recipe on the
+shopping list. The leading quantity is multiplied and every word is left alone,
+which is a far smaller problem than *merging* a list and is why this half is now
+done and the merge still is not: "400g beef mince" at 0.5 is "200g beef mince",
+and nothing else about the line has to be understood.
+
+Rounding is per unit, because the sensible answer differs by three orders of
+magnitude. Grams and millilitres go to whole numbers — nobody weighs out 187.5g.
+Kilos and litres keep two decimals — rounding 0.75kg the same way gives 1kg, a
+third more lamb. Everything else is a count, rounds to a quarter and comes back
+as a fraction, because half an onion is a real instruction.
+
+Anything not confidently parsed is **passed through untouched and flagged**:
+"salt and pepper to taste" and "a pinch of saffron" are left alone, and the page
+says how many lines it could not scale. A line silently halved wrongly cannot be
+recovered from; one flagged as unscaled can be checked in two seconds.
 
 The planner picks greedily, hardest day first, then improves by swapping days
 and by substituting unused recipes until nothing helps.
@@ -141,8 +203,10 @@ Everything worth changing is in `config.json`:
 | `office_days` | Weekday names seeding a *fresh* week. Day to day, use the chips on the page. |
 | `day_types` | Ceiling, target and wall-clock cap for office / home / weekend. |
 | `preferred_sources` | Domains or site names to favour. Empty to switch off. |
+| `avoid_ingredients` | Hard exclusions. Set these on the preferences page. |
+| `avoid_methods` | Cooking to avoid (heavy penalty, not a ban). Same page. |
 | `week_starts_on` | `"today"`, or a weekday name to plan the *next* one of those. |
-| `weights` | Relative pull of heartiness, effort, repeats, variety and source. |
+| `weights` | Relative pull of heartiness, effort, repeats, variety, source, season and avoided methods. |
 | `repeat_memory_weeks` | How long before something can come round again. |
 | `exclude_categories` | Paprika categories that are not dinner. |
 | `heartiness_overrides` | `{"Recipe name": 0.9}` when the scoring is wrong. |
@@ -162,16 +226,21 @@ which is the fastest way to see whether a change did what you wanted.
 ```
 run.py            entry point: web app, --sync, --plan, --scores
 selftest.py       offline checks; also the synthetic library
+selftest_extra.py checks for scaling, aversions, methods and seasons
 seed_demo.py      fill the cache with that library to try the app
 config.json       everything tunable
 mealplan/
   paprika.py      read-only client for Paprika's cloud sync API
   weather.py      Open-Meteo forecast + the wanted-heartiness curve
   scoring.py      the keyword tables and the two scores
+  seasons.py      produce calendar + the hemisphere shift
+  preferences.py  aversions, avoided methods, and the page's candidate lists
+  quantity.py     parse and scale an ingredient line
   planner.py      day/recipe costs and the assignment search
   service.py      the operations, with no Flask in them
   store.py        config, recipe cache, plan and history on disk
   web.py          Flask routes
+templates/        plan, shopping list, preferences
 data/             cache, current plan, history (all gitignored)
 ```
 

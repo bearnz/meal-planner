@@ -4,6 +4,7 @@ because there is nothing listening beyond this machine.
 
 from __future__ import annotations
 
+import re
 import traceback
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
@@ -99,9 +100,58 @@ def office(iso_day: str):
 
 @app.route("/shopping")
 def shopping():
+    config, err = _config_or_error()
     plan = store.load_plan()
-    return render_template("shopping.html", groups=service.shopping_list(plan),
-                           plan=plan)
+    people = int((config or {}).get("household_size", 0) or 0)
+    return render_template("shopping.html",
+                           groups=service.shopping_list(plan, people),
+                           people=people, plan=plan, error=err)
+
+
+@app.route("/preferences")
+def prefs():
+    config, err = _config_or_error()
+    if err:
+        return render_template("preferences.html", options=None, error=err), 400
+    try:
+        options = service.preference_options(config)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.error("preferences failed: %s", traceback.format_exc())
+        return render_template("preferences.html", options=None, error=str(exc))
+    return render_template("preferences.html", options=options, error=None)
+
+
+@app.post("/preferences")
+def save_prefs():
+    config, err = _config_or_error()
+    if err:
+        return render_template("preferences.html", options=None, error=err), 400
+
+    ingredients = request.form.getlist("ingredient")
+    # Free text, comma separated, for anything the curated list does not cover.
+    extra = request.form.get("extra", "")
+    ingredients += [t for t in re.split(r"[,\n]", extra) if t.strip()]
+    methods = request.form.getlist("method")
+    people = request.form.get("people", type=int) or config.get("household_size", 2)
+
+    try:
+        config = service.save_preferences(config, ingredients, methods, people)
+        # Preferences change which recipes exist, so the standing plan is stale
+        # the moment they are saved. Re-planning here rather than leaving a
+        # stale week on screen is the whole point of the page.
+        service.generate(config)
+    except service.NoRecipes as exc:
+        # Everything was excluded. Say so on the page rather than 500ing, and
+        # leave the preferences saved so they can be loosened rather than lost.
+        return render_template("preferences.html",
+                               options=service.preference_options(config),
+                               error=str(exc)), 200
+    except Exception as exc:  # noqa: BLE001
+        app.logger.error("save prefs failed: %s", traceback.format_exc())
+        return render_template("preferences.html",
+                               options=service.preference_options(config),
+                               error=str(exc)), 500
+    return redirect(url_for("index"))
 
 
 @app.route("/api/plan")

@@ -27,6 +27,7 @@
     <form method="post" action="{{ url_for('regenerate') }}">
       <button type="submit">Re-plan the week</button>
     </form>
+    <a class="ghost button" href="{{ url_for('prefs') }}">Preferences</a>
     <a class="ghost button" href="{{ url_for('shopping') }}">Shopping list</a>
   </div>
 </header>
@@ -97,6 +98,13 @@
         </div>
       </div>
     </div>
+
+    {% if d.in_season %}
+      <p class="season">&#127807; {{ d.in_season[:3] | join(', ') }} in season</p>
+    {% endif %}
+    {% if d.avoid_methods %}
+      <p class="warn-line">&#9888; {{ d.avoid_methods | join(', ') }}</p>
+    {% endif %}
 
     {# A preferred recipe is always credited, even when there is no domain to
        show: Paprika stores plenty of them as a typed-in site name with no URL,

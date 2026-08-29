@@ -184,12 +184,45 @@ def _source_cost(s: Scored, config: dict) -> float:
     return 0.0 if s.preferred_source else float(config["weights"].get("source", 0.0))
 
 
+def _method_cost(s: Scored, config: dict) -> float:
+    """A heavy charge for a cooking method the household would rather avoid.
+
+    Heavy but not infinite, and that is the difference between this and an
+    ingredient aversion. "We would rather not deep fry" is a preference: a
+    recipe that is otherwise the best thing available can still win one night.
+    "We do not eat mushrooms" is not a preference, and that one removes the
+    recipe from the library entirely rather than passing through here.
+    """
+    if not s.avoid_methods:
+        return 0.0
+    weight = float(config["weights"].get("avoid_method", 1.6))
+    # Two avoided methods in one recipe is worse than one, but not twice as bad
+    # -- a deep-fried barbecue is still just one dinner you did not want.
+    return weight * (1.0 + 0.4 * (len(s.avoid_methods) - 1))
+
+
+def _season_cost(s: Scored, config: dict) -> float:
+    """Seasonality as a cost, so more in-season is cheaper.
+
+    Shifted so a recipe with no seasonal produce at all sits at the same cost as
+    a mildly in-season one, rather than being penalised for containing nothing
+    the table knows about. Otherwise every pasta dish in the library would rank
+    below every salad in February purely for being unopinionated.
+    """
+    weight = float(config["weights"].get("season", 0.0))
+    if weight <= 0:
+        return 0.0
+    return weight * (0.25 - s.season_score) * 0.8
+
+
 def pair_cost(s: Scored, slot: Slot, config: dict, recent: dict[str, int]) -> float:
     w = config["weights"]
     want = wanted_heartiness(slot.weather)
     heart = abs(s.heartiness - want)
     return (
         _source_cost(s, config)
+        + _method_cost(s, config)
+        + _season_cost(s, config)
         + float(w.get("heartiness", 1.0)) * heart
         + float(w.get("effort", 1.0)) * _effort_cost(s, slot, config)
         + float(w.get("repeat", 1.0))
@@ -259,8 +292,13 @@ def _explain(s: Scored, slot: Slot, config: dict) -> list[str]:
     elif s.minutes:
         why.append(f"{s.minutes} min total")
 
+    if s.in_season:
+        shown = ", ".join(s.in_season[:3])
+        why.append(f"{shown} in season")
     if s.preferred_source and config.get("preferred_sources"):
         why.append(s.domain or "a favourite source")
+    if s.avoid_methods:
+        why.append("involves " + ", ".join(s.avoid_methods))
     return why
 
 
@@ -409,6 +447,16 @@ def _improve(
                     spare = [s for s in pool if s.uid not in used]
                     break
     return assignment
+
+
+def is_eligible(s: Scored, config: dict) -> bool:
+    """Dinner, and nothing the household refuses to eat.
+
+    Aversions are applied here rather than as a cost, because a weighted dislike
+    still serves the thing on a week when nothing else fits -- which is exactly
+    what the setting exists to prevent.
+    """
+    return is_dinner(s, config) and not s.excluded_by
 
 
 def is_dinner(s: Scored, config: dict) -> bool:

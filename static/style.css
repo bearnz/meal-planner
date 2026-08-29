@@ -175,3 +175,69 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
 }
 .shop-day label { display: flex; gap: 0.5rem; align-items: baseline; cursor: pointer; }
 .shop-day input:checked + span { text-decoration: line-through; opacity: 0.45; }
+
+
+/* --- seasonality and warnings on a day card --------------------------------- */
+.season { margin: -0.4rem 0 0.5rem; font-size: 0.72rem; color: var(--effort); }
+.warn-line { margin: -0.3rem 0 0.6rem; font-size: 0.72rem; color: var(--accent); }
+.warn { color: var(--accent); font-size: 0.72rem; }
+.unscaled { opacity: 0.7; border-bottom: 1px dotted var(--line); }
+
+/* --- preferences page ------------------------------------------------------- */
+.pref-block {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 11px; padding: 1.1rem 1.2rem; margin-bottom: 1rem;
+}
+.pref-block h2 { font-size: 1rem; margin: 0 0 0.3rem; }
+.pref-note {
+  margin: 0 0 0.9rem; color: var(--ink-soft);
+  font-size: 0.8rem; line-height: 1.5; max-width: 62ch;
+}
+
+.people { font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+.people input {
+  font: inherit; width: 4.5rem; padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: var(--bg); color: var(--ink);
+}
+
+.pref-grid {
+  display: grid; gap: 0.45rem;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+.pref-grid.tight {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.pref {
+  display: grid; align-items: baseline; gap: 0.1rem 0.5rem;
+  grid-template-columns: auto 1fr auto;
+  padding: 0.4rem 0.6rem; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg);
+  font-size: 0.82rem; cursor: pointer;
+}
+.pref:hover { border-color: var(--accent); }
+.pref.on { background: var(--accent-soft); border-color: var(--accent); }
+.pref input { margin: 0; }
+.pref-name { text-transform: capitalize; }
+.pref-hint {
+  grid-column: 2 / 4; color: var(--ink-soft);
+  font-size: 0.7rem; line-height: 1.35;
+}
+.pref-count {
+  color: var(--ink-soft); font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Ticking something this common costs a third of the library, so it is worth
+   looking different before it is clicked rather than after. */
+.pref.costly .pref-count { color: var(--accent); font-weight: 700; }
+
+.extra { display: block; margin-top: 0.9rem; font-size: 0.82rem; color: var(--ink-soft); }
+.extra input {
+  display: block; width: 100%; max-width: 34rem; margin-top: 0.3rem;
+  font: inherit; font-size: 0.85rem; padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: var(--bg); color: var(--ink);
+}
+
+.pref-actions { margin-top: 1.2rem; }

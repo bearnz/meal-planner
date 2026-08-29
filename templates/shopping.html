@@ -11,28 +11,63 @@
 <header class="bar">
   <div>
     <h1>Shopping list</h1>
-    <p class="sub">Grouped by night. Quantities are as written in Paprika.</p>
+    <p class="sub">
+      {% if people %}Scaled for {{ people }}.{% endif %}
+      Grouped by night &mdash; quantities are not merged across recipes.
+    </p>
   </div>
   <div class="actions">
+    <a class="ghost button" href="{{ url_for('prefs') }}">Preferences</a>
     <a class="ghost button" href="{{ url_for('index') }}">Back to the week</a>
   </div>
 </header>
+
+{% if error %}
+  <div class="error"><strong>Heads up.</strong><p>{{ error }}</p></div>
+{% endif %}
 
 {% if groups %}
   <div class="shop">
   {% for g in groups %}
     <section class="shop-day">
       <h2>{{ g.day_name }}</h2>
-      <p class="shop-recipe">{{ g.name }}</p>
+      <p class="shop-recipe">
+        {{ g.name }}
+        {% if g.factor != 1.0 and g.makes %}
+          <span class="scale" title="Recipe serves {{ g.makes }}; scaled to {{ g.people }}">
+            &times;{{ g.factor }}
+          </span>
+        {% elif not g.makes and people %}
+          <span class="warn" title="No serving count on this recipe, so nothing was scaled">
+            not scaled
+          </span>
+        {% endif %}
+      </p>
+
       <ul>
         {% for line in g.ingredients %}
-          {% if line.rstrip().endswith(':') %}
-            <li class="heading">{{ line }}</li>
+          {% if line.heading %}
+            <li class="heading">{{ line.text }}</li>
           {% else %}
-            <li><label><input type="checkbox"> <span>{{ line }}</span></label></li>
+            <li>
+              <label>
+                <input type="checkbox">
+                <span class="{% if not line.scaled and g.factor != 1.0 %}unscaled{% endif %}"
+                      {% if not line.scaled and g.factor != 1.0 %}
+                        title="No quantity here that could be scaled — check this one"
+                      {% endif %}>{{ line.text }}</span>
+              </label>
+            </li>
           {% endif %}
         {% endfor %}
       </ul>
+
+      {% if g.unscaled %}
+        <p class="note tiny">
+          {{ g.unscaled }} line{{ '' if g.unscaled == 1 else 's' }} had no
+          quantity to scale &mdash; shown as written.
+        </p>
+      {% endif %}
     </section>
   {% endfor %}
   </div>

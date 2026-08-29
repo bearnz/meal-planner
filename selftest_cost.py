@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import json
+import re
+from datetime import date
 
 from mealplan import pricing, store
 
@@ -18,6 +19,7 @@ def run(check):
     _staples(check, cat)
     _costing(check, cat)
     _savings(check, cat)
+    run_sources(check)
 
 
 def _parsing(check):
@@ -209,3 +211,98 @@ def _savings(check, cat):
                                         "New World")
     check("a recipe of nothing but free staples has nothing to save",
           not only_staples, str([s.item for s in only_staples]))
+
+
+def run_sources(check):
+    """Price maintenance: receipts, manual updates, and staleness."""
+    import copy
+    from mealplan import pricesrc
+
+    print("\nprice sources")
+    cat = pricing.Catalogue(store.load_prices())
+
+    # robots.txt gate fails closed. A permissive default is conventional and
+    # wrong here: an unreachable site is exactly the one it is worst to hammer.
+    check("an unreachable host is not assumed to allow fetching",
+          not pricesrc.robots_allows("https://nonexistent.invalid/search"))
+
+    receipt = "\n".join([
+        "Beef Mince 500g                          $7.49",
+        "Chicken Thighs 1kg          $8.99 /kg    $8.99",
+        "Onions Brown Loose          $2.49 /kg    $1.24",
+        "Butter 500g                              $6.49",
+        "Whittakers Chocolate 250g                $5.49",
+        "SUBTOTAL                                $32.69",
+        "EFTPOS                                  $32.69",
+    ])
+    lines = pricesrc.parse_receipt(receipt, cat)
+    by = {l.matched: l for l in lines if l.matched}
+
+    check("totals and payment lines are not read as groceries",
+          not any(re.search(r"subtotal|eftpos", l.name, re.I) for l in lines),
+          str([l.name for l in lines]))
+    check("a pack size gives price per pack",
+          by["beef mince"].per == 500 and by["beef mince"].resolved_price == 7.49,
+          f"{by['beef mince'].per} {by['beef mince'].resolved_price}")
+
+    # The bug worth a test: a per-kg receipt price against an each-priced item.
+    # Read naively it becomes the price of one, which for chicken thighs is nine
+    # times too much -- and it lands in the file the costs are built from.
+    thigh = by["chicken thigh"]
+    check("a per-kg price converts to per-each via the unit weight",
+          abs(thigh.resolved_price - 8.99 * 110 / 1000) < 0.01 and thigh.per == 1.0,
+          f"${thigh.resolved_price:.2f} per {thigh.per}")
+    check("...and is nowhere near the raw per-kg figure",
+          thigh.resolved_price < 8.99 / 2, f"${thigh.resolved_price:.2f}")
+    onion = by["onion"]
+    check("a loose per-kg vegetable converts too",
+          abs(onion.resolved_price - 2.49 * 150 / 1000) < 0.01,
+          f"${onion.resolved_price:.2f}")
+
+    check("an unknown product is skipped, not guessed",
+          any("chocolate" in l.name.lower() and not l.matched for l in lines))
+
+    # Ambiguity is refused rather than resolved by assumption.
+    amb = pricesrc.parse_receipt("Prosciutto            $12.00 /kg   $6.00", cat)
+    check("an ambiguous line is refused when no unit weight is known",
+          all(l.resolved_price or l.note for l in amb),
+          str([(l.matched, l.note) for l in amb]))
+
+    # Writing back, on a copy so the shipped file is untouched by the tests.
+    data = copy.deepcopy(store.load_prices())
+    before = pricesrc.freshness(data)
+    # A value deliberately unlike anything that could already be in the file:
+    # the first cut asserted against a fixed price, and a real --price run on
+    # that same item made the test fail for the one reason it should not care
+    # about.
+    entry = data["items"]["beef mince"]["prices"]["PAK'nSAVE"]
+    novel = round(float(entry.get("price", 0)) + 3.33, 2)
+    changed = pricesrc.set_price(data, "beef mince", "PAK'nSAVE", novel, 1000)
+    check("setting a price reports that it changed", changed)
+    check("setting the same price again reports no change",
+          not pricesrc.set_price(data, "beef mince", "PAK'nSAVE", novel, 1000))
+    entry = data["items"]["beef mince"]["prices"]["PAK'nSAVE"]
+    check("the new price is stored", entry["price"] == novel and entry["per"] == 1000)
+    check("it is stamped as checked today",
+          entry.get("checked") == date.today().isoformat(), str(entry.get("checked")))
+    check("a verified price drops the invented special beside it",
+          "special" not in entry, str(entry))
+
+    after = pricesrc.freshness(data)
+    check("freshness goes up when a price is checked",
+          after["checked"] >= before["checked"] + 1,
+          f"{before['checked']} -> {after['checked']}")
+
+    stale = pricesrc.stale_items(data)
+    check("a just-checked price is not stale",
+          ("beef mince", "PAK'nSAVE", "") not in stale
+          and not any(i == "beef mince" and s == "PAK'nSAVE" for i, s, _ in stale))
+    check("the shipped estimates are all reported unchecked",
+          len(stale) == after["total"] - after["checked"],
+          f"{len(stale)} vs {after['total'] - after['checked']}")
+
+    applied = pricesrc.apply_receipt(data, lines, "PAK'nSAVE")
+    check("applying a receipt writes only the resolved lines",
+          len(applied) == sum(1 for l in lines
+                              if l.matched and l.resolved_price and not l.note),
+          f"{len(applied)} written")

@@ -293,3 +293,13 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
   border-radius: 7px; font-size: 0.76rem; line-height: 1.45;
 }
 .money-warn code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+.freshness {
+  margin: 0.75rem 0 0; display: flex; align-items: center; gap: 0.6rem;
+  color: var(--ink-soft); font-size: 0.74rem;
+}
+.bar-track {
+  width: 6rem; height: 5px; flex: none;
+  background: var(--line); border-radius: 3px; overflow: hidden;
+}
+.bar-fill { display: block; height: 100%; background: var(--effort); }

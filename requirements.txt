@@ -6,3 +6,8 @@ requests>=2.31
 # without it, so it is left commented out rather than made a dependency
 # of a project whose entire runtime is otherwise Flask and requests.
 # pyarrow
+
+# Only for `--grocer-stores --refresh`, which re-reads the store list
+# out of grocer.nz's public catalogue. The shipped list works without it.
+# duckdb
+

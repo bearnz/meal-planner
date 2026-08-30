@@ -1817,7 +1817,7 @@
       "unit": "g",
       "prices": {
         "PAK'nSAVE": {
-          "price": 28.99,
+          "price": 29.99,
           "per": 1000.0,
           "checked": "2026-08-30"
         }
@@ -1836,7 +1836,7 @@
       "unit": "g",
       "prices": {
         "PAK'nSAVE": {
-          "price": 15.99,
+          "price": 10.99,
           "per": 1000.0,
           "checked": "2026-08-30"
         }
@@ -1872,9 +1872,9 @@
     "source": "grocer.nz",
     "url": "https://grocer.nz",
     "attribution": "Price data from grocer.nz, used for personal, non-commercial use.",
-    "store_id": 241,
+    "store_id": 222,
     "store": "PAK'nSAVE",
-    "fetched": "2026-08-30T09:44:31+00:00",
-    "etag": "\"9b7e606d0702058ad049f073eb380aad\""
+    "fetched": "2026-08-30T09:56:15+00:00",
+    "etag": "\"14f4c0b3605edad257cd155b732ea6b7\""
   }
 }

@@ -22,6 +22,9 @@ def run(check):
     _pinning(check)
     _refresh(check)
     _politeness(check)
+    _stores(check)
+    _store_change(check)
+    _store_move_refetches(check)
 
 
 def _sizes(check):
@@ -197,3 +200,102 @@ def _politeness(check):
             check(f"{name} refuses when robots.txt says no", ok)
     finally:
         grocer.robots_allows = real
+
+
+
+def _stores(check):
+    print("\ngrocer.nz store list")
+    from mealplan import grocer
+
+    rows = grocer.load_stores()
+    check("the shipped store list is not empty", len(rows) > 100, str(len(rows)))
+    check("Royal Oak is in it and is 222",
+          (grocer.store_by_id(222) or {}).get("name") == "PAK'nSAVE Royal Oak",
+          str(grocer.store_by_id(222)))
+    check("an unknown id is empty rather than an error",
+          grocer.store_by_id(99999999) == {})
+    check("searching finds by name", any(
+        "Royal Oak" in s["name"] for s in grocer.find_stores("royal oak")))
+
+    # Only chains prices.json has a column for can be used. A Fresh Choice store
+    # would fetch and price perfectly and then be costed against nothing.
+    check("a priced chain maps to its price column",
+          grocer.store_name_for("Pak'nSave") == "PAK'nSAVE",
+          grocer.store_name_for("Pak'nSave"))
+    check("...case and spelling from the catalogue, not ours",
+          grocer.store_name_for("PAK'NSAVE") == "PAK'nSAVE")
+    check("an unpriced chain maps to nothing",
+          grocer.store_name_for("Fresh Choice") == "",
+          "inventing a column makes a price that silently does nothing")
+
+
+def _store_change(check):
+    print("\nchanging shop")
+    from mealplan import grocer, service
+
+    config: dict = {"grocer": {"store_id": 241, "store_name": "PAK'nSAVE Mt Albert"},
+                    "primary_store": "PAK'nSAVE"}
+
+    service._set_store(config, 222)
+    check("picking a store records it", config["grocer"]["store_id"] == 222)
+    check("...with its name", "Royal Oak" in config["grocer"]["store_name"])
+
+    # The one that is easy to forget: which shelf is read and which column the
+    # week is costed against are two settings, and they have to move together.
+    nw = next(s for s in grocer.load_stores() if s["vendor"] == "New World")
+    service._set_store(config, nw["id"])
+    check("changing chain also moves what the week is costed against",
+          config["primary_store"] == "New World", config["primary_store"])
+
+    fc = next((s for s in grocer.load_stores() if s["vendor"] == "Fresh Choice"),
+              None)
+    if fc:
+        before = dict(config["grocer"])
+        service._set_store(config, fc["id"])
+        check("a chain with no price column is refused, not half-applied",
+              config["grocer"] == before, str(config["grocer"]))
+
+    service._set_store(config, 0)
+    check("clearing the store is allowed", config["grocer"]["store_id"] == 0)
+
+    # A change of shop has to count as a change, or the save is treated as a
+    # no-op and the page reports nothing while config.json has moved.
+    a = service._snapshot({"grocer": {"store_id": 241}})
+    b = service._snapshot({"grocer": {"store_id": 222}})
+    check("a different store is a different snapshot", a != b)
+
+
+def _store_move_refetches(check):
+    print("\nmoving shop re-fetches")
+    from mealplan import grocer
+
+    real = grocer.fetch_prices
+    try:
+        seen: list[str] = []
+
+        def stub(store_id, etag=""):
+            seen.append(etag)
+            return {1672: grocer.Price(1672, 2999, 0, 0, "")}, "TAG", False
+
+        grocer.fetch_prices = stub
+        data: dict = {"items": {}}
+        grocer.pin(data, "beef chuck",
+                   grocer.Product(1672, "NZ Beef Chuck Steak", "", "", ""))
+        grocer.refresh(data, 241, "PAK'nSAVE", force=True)
+        seen.clear()
+
+        # Same shop, everything priced: the ETag is worth sending.
+        grocer.refresh(data, 241, "PAK'nSAVE", force=True)
+        check("staying put may ask to be told nothing", seen[0] == "TAG", str(seen))
+
+        # Different shop: the old ETag describes the old shop's price list, and
+        # every price in the file was fetched somewhere else. A 304 here would
+        # leave Royal Oak's plan costed at Mt Albert's prices.
+        seen.clear()
+        grocer.refresh(data, 222, "PAK'nSAVE", force=True)
+        check("moving shop ignores the old ETag", seen[0] == "",
+              f"sent {seen!r}; a 304 keeps the other shop's prices")
+        check("...and the new price lands", data["items"]["beef chuck"]
+              ["prices"]["PAK'nSAVE"]["price"] == 29.99)
+    finally:
+        grocer.fetch_prices = real

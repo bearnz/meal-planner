@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 349 checks over scoring, planning, costing and the forecast
+python selftest.py       # 365 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -319,10 +319,28 @@ Shelf prices for one store, pulled from [grocer.nz](https://grocer.nz). Needs
 `pip install pyarrow`, which nothing else here does.
 
 ```bash
+python run.py --grocer-stores "royal oak"                  # find a store id
 python run.py --grocer-find "beef chuck" --category "Meat & Seafood"
 python run.py --grocer-pin "beef chuck" 1672
-python run.py --grocer-refresh          # the weekly job
+python run.py --grocer-refresh                             # the weekly job
 ```
+
+**Which shop.** Prices are per store — Royal Oak and Mt Albert are both
+PAK'nSAVE and neither charges the same. Pick one on the **Preferences page**,
+or set `grocer.store_id` in config.json. Changing it moves two settings
+together: which shelf is read, and which column of `prices.json` the week is
+costed against, so picking a New World store re-costs the week against New
+World. Only chains the price file has a column for are offered — a Fresh Choice
+store would fetch perfectly and then be costed against nothing.
+
+Changing store does **not** re-fetch; the page says so and points at
+`--grocer-refresh`. The refresh knows it has moved and ignores the old ETag,
+because a 304 there would leave the new shop's plan costed at the old shop's
+prices.
+
+The store list ships in `data/grocer_stores.json` (465 stores) so the picker
+works on a fresh clone. `--grocer-stores --refresh` re-downloads it, needs
+`duckdb`, and is worth running about as often as supermarkets open.
 
 **Find, then pin, then refresh** — and the split is the point. Searching their
 catalogue for "beef chuck" returns the right steak first and then four kinds of
@@ -364,7 +382,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 349 checks, all passing
+python selftest.py                        # 365 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole
@@ -467,7 +485,7 @@ selftest_cost.py  checks for parsing, units, staples, costing and specials
 selftest_undo.py  checks for the preferences save/undo path, via the routes
 selftest_library.py checks for the shapes a real Paprika library turned out to have
 selftest_speed.py checks that a re-plan does not redo work it already did
-selftest_grocer.py checks the grocer.nz price source, all responses stubbed
+selftest_grocer.py checks the grocer.nz price source and the store picker
 prices.json       the price catalogue - ESTIMATES, see the notes inside
 seed_demo.py      fill the cache with that library to try the app
 config.json       everything tunable

@@ -10,6 +10,7 @@
     python run.py --receipt receipt.txt --store "PAK'nSAVE" --apply
     python run.py --missing  which unpriced ingredients block the most recipes
 
+    python run.py --grocer-stores "royal oak"     find your store id
     python run.py --grocer-find "beef chuck"      candidates at your store
     python run.py --grocer-pin "beef chuck" 1672  remember which one it is
     python run.py --grocer-refresh                update every pinned price
@@ -190,6 +191,32 @@ def _grocer_prices(grocer, store_id):
         return {}
 
 
+def cmd_grocer_stores(args) -> int:
+    """List the stores prices can be fetched for, or re-download the list."""
+    from mealplan import grocer
+
+    if args.refresh:
+        rows = grocer.fetch_stores()
+        print(f"\n  Re-read {len(rows)} stores from grocer.nz.")
+    query = args.grocer_stores if isinstance(args.grocer_stores, str) else ""
+    rows = grocer.find_stores(query, limit=int(args.limit) if query else 400)
+    if not rows:
+        print(f"\n  No store matched {query!r}.\n")
+        return 1
+
+    config = store.load_config()
+    chosen = int((config.get("grocer") or {}).get("store_id") or 0)
+    print(f"\n  {len(rows)} store(s)\n")
+    for s in rows:
+        column = grocer.store_name_for(s.get("vendor", ""))
+        mark = "*" if s["id"] == chosen else " "
+        note = "" if column else "   (no price column in prices.json)"
+        print(f"  {mark} {s['id']:>6}  {s['name']}{note}")
+    print("\n  * is the store in use. Change it on the Preferences page, or "
+          'set "grocer": {"store_id": ...} in config.json.\n')
+    return 0
+
+
 def cmd_grocer_find(args) -> int:
     """Show candidate products so a person can choose. Never picks for you.
 
@@ -355,6 +382,10 @@ def main() -> int:
     ap.add_argument("--store", default="", help="which supermarket")
     ap.add_argument("--missing", action="store_true",
                     help="which unpriced ingredients block the most recipes")
+    ap.add_argument("--grocer-stores", nargs="?", const=True, metavar="QUERY",
+                    help="list stores prices can be fetched for")
+    ap.add_argument("--refresh", action="store_true",
+                    help="with --grocer-stores, re-download the list")
     ap.add_argument("--grocer-find", metavar="ITEM",
                     help="search grocer.nz for a product to price ITEM with")
     ap.add_argument("--grocer-pin", nargs=2, metavar=("ITEM", "PRODUCT_ID"),
@@ -385,6 +416,8 @@ def main() -> int:
             return cmd_receipt(args)
         if args.missing:
             return cmd_missing(args)
+        if args.grocer_stores:
+            return cmd_grocer_stores(args)
         if args.grocer_find:
             return cmd_grocer_find(args)
         if args.grocer_pin:

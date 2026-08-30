@@ -48,6 +48,43 @@
   </section>
 
   <section class="pref-block">
+    <h2>Where we shop</h2>
+    <p class="pref-note">
+      Shelf prices are fetched for one store, because supermarkets in the same
+      chain do not charge the same. Only chains the price list has a column for
+      are offered.
+    </p>
+    <label class="store-pick">
+      Prices from
+      <select name="store_id">
+        <option value="0">&mdash; not set &mdash;</option>
+        {% for g in options.store.groups %}
+          <optgroup label="{{ g.vendor }}">
+            {% for s in g.stores %}
+              <option value="{{ s.id }}" {% if s.on %}selected{% endif %}>{{ s.name }}</option>
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
+    </label>
+    {% if options.store.priced_store_id and options.store.priced_store_id != options.store.chosen %}
+      <p class="pref-warn">
+        &#9888; The prices in the file were fetched for a
+        <strong>different store</strong>{% if options.store.fetched %} on
+        {{ options.store.fetched }}{% endif %}. Saving this does not re-fetch
+        them &mdash; run <code>python run.py --grocer-refresh</code> to price
+        the new one.
+      </p>
+    {% elif options.store.fetched %}
+      <p class="pref-note tiny">
+        Prices last refreshed {{ options.store.fetched }} for
+        {{ options.store.chosen_name or options.store.priced_store }}. Update
+        with <code>python run.py --grocer-refresh</code>.
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="pref-block">
     <h2>Cooking we would rather avoid</h2>
     <p class="pref-note">
       A strong preference, not a ban &mdash; a recipe that is otherwise the best

@@ -85,8 +85,8 @@
   "primary_store": "PAK'nSAVE",
   "min_saving": 0.5,
   "grocer": {
-    "store_id": 241,
-    "store_name": "PAK'nSAVE Mt Albert",
+    "store_id": 222,
+    "store_name": "PAK'nSAVE Royal Oak",
     "_note": "Store id from grocer.nz. To change it: open grocer.nz, favourite your store, and read the id from the app's local database, or ask for it to be looked up. Prices are per store, so this must be the one you actually shop at."
   }
 }

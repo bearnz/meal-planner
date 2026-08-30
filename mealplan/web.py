@@ -168,7 +168,9 @@ def save_prefs():
     people = request.form.get("people", type=int) or config.get("household_size", 2)
 
     try:
-        config = service.save_preferences(config, ingredients, methods, people)
+        store_id = request.form.get("store_id", type=int)
+        config = service.save_preferences(config, ingredients, methods,
+                                          people, store_id)
         # Preferences change which recipes exist, so the standing plan is stale
         # the moment they are saved. Re-planning here rather than leaving a
         # stale week on screen is the whole point of the page.

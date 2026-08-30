@@ -538,6 +538,40 @@ def preference_options(config: dict) -> dict[str, Any]:
             for k, v in preferences.METHOD_GROUPS.items()
         ],
         "people": int(config.get("household_size", 0) or 0),
+        "store": _store_options(config),
+    }
+
+
+def _store_options(config: dict) -> dict[str, Any]:
+    """The store picker: which shop prices are read from.
+
+    Only chains prices.json has a column for are offered. A Fresh Choice store
+    would fetch and price perfectly and then be costed against nothing, because
+    nothing in the file has a Fresh Choice price -- a setting that appears to
+    work and quietly does nothing is worse than one that is not there.
+    """
+    from . import grocer
+
+    chosen = int((config.get("grocer") or {}).get("store_id") or 0)
+    groups: dict[str, list[dict]] = {}
+    for s in grocer.load_stores():
+        column = grocer.store_name_for(s.get("vendor", ""))
+        if not column:
+            continue
+        groups.setdefault(column, []).append(
+            {"id": s["id"], "name": s["name"], "on": s["id"] == chosen})
+
+    priced = catalogue().data.get("grocer") or {}
+    return {
+        "groups": [{"vendor": v, "stores": sorted(g, key=lambda x: x["name"])}
+                   for v, g in sorted(groups.items())],
+        "chosen": chosen,
+        "chosen_name": (grocer.store_by_id(chosen) or {}).get("name", ""),
+        # Which store the prices currently in the file actually came from, which
+        # is not the same question as which one is selected.
+        "priced_store_id": int(priced.get("store_id") or 0),
+        "priced_store": priced.get("store") or "",
+        "fetched": (priced.get("fetched") or "")[:10],
     }
 
 
@@ -545,11 +579,50 @@ PREF_KEYS = ("avoid_ingredients", "avoid_methods", "household_size")
 
 
 def _snapshot(config: dict) -> dict:
-    return {k: config.get(k) for k in PREF_KEYS}
+    """What a save is compared against to decide whether anything changed.
+
+    The store belongs in here even though it lives under a nested key: leave
+    it out and changing only the shop compares equal, the save is treated as
+    a no-op, and the page says nothing happened while the config on disk has
+    quietly moved.
+    """
+    snap = {k: config.get(k) for k in PREF_KEYS}
+    snap["store_id"] = int((config.get("grocer") or {}).get("store_id") or 0)
+    return snap
+
+
+def _set_store(config: dict, store_id: int) -> None:
+    """Point the price fetcher at a shop, and the costing at its chain.
+
+    Two settings move together here, and forgetting the second is the whole
+    reason this is a function. `grocer.store_id` says which shelf to read;
+    `primary_store` says which column of prices.json the week is costed
+    against. Set the first alone and the app fetches Royal Oak's prices into
+    the PAK'nSAVE column while costing the week against New World, which is a
+    plan priced at a shop you did not choose.
+    """
+    from . import grocer
+
+    g = config.setdefault("grocer", {})
+    if not store_id:
+        g["store_id"] = 0
+        g["store_name"] = ""
+        return
+    row = grocer.store_by_id(store_id)
+    if not row:
+        return
+    column = grocer.store_name_for(row.get("vendor", ""))
+    if not column:
+        # A chain with no price column would fetch happily and cost nothing.
+        return
+    g["store_id"] = int(store_id)
+    g["store_name"] = row.get("name", "")
+    config["primary_store"] = column
 
 
 def save_preferences(config: dict, avoid_ingredients: list[str],
-                     avoid_methods: list[str], people: int) -> dict:
+                     avoid_methods: list[str], people: int,
+                     store_id: int | None = None) -> dict:
     """Save preferences, recording enough to reverse it and to report it.
 
     An aversion removes recipes from the library outright, which is the right
@@ -567,6 +640,8 @@ def save_preferences(config: dict, avoid_ingredients: list[str],
     config["avoid_methods"] = [m for m in avoid_methods
                                if m in preferences.METHOD_GROUPS]
     config["household_size"] = max(1, min(int(people or 1), 50))
+    if store_id is not None:
+        _set_store(config, int(store_id))
     store.save_config(config)
 
     after = _snapshot(config)

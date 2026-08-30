@@ -361,7 +361,11 @@ def refresh(data: dict, store_id: int, storename: str,
     unpriced = [i for i in pins
                 if not ((data["items"][i].get("prices") or {})
                         .get(storename, {}).get("price"))]
-    etag_in = "" if unpriced else str(st.get("etag") or "")
+    # A different store is a different price list, so the ETag from the old one
+    # says nothing about this one -- and every price already in the file was
+    # fetched somewhere else.
+    moved = int(st.get("store_id") or 0) != int(store_id)
+    etag_in = "" if (unpriced or moved) else str(st.get("etag") or "")
     prices, etag, unchanged = fetch_prices(store_id, etag_in)
     st.update({"source": SOURCE_NAME, "url": SOURCE_URL,
                "attribution": ATTRIBUTION, "store_id": int(store_id),
@@ -446,3 +450,119 @@ def recall(product_id: int) -> Product | None:
     return Product(id=int(d["id"]), name=str(d.get("name") or ""),
                    brand=str(d.get("brand") or ""), size=str(d.get("size") or ""),
                    category=str(d.get("category") or ""))
+
+
+
+# --- the store list -----------------------------------------------------------
+#
+# grocer.nz's own store picker is fed from Firestore, which requires a signed-in
+# user, so that door is shut and stays shut. The list is in the public catalogue
+# instead -- `base_v3.duckdb.br`, the same static asset the site downloads to
+# every visitor -- and it is 2.4 MB, which is forty times the price file. So it
+# is fetched *rarely* and kept: stores open and close a handful of times a year,
+# and the shipped copy is what the settings page reads. `--grocer-stores
+# --refresh` is the only thing that ever downloads it.
+
+STORES_URL = ASSETS + "/base_v3.duckdb.br"
+STORES_PATH_NAME = "grocer_stores.json"
+
+
+def stores_path():
+    from . import store as _store
+
+    return _store.DATA / STORES_PATH_NAME
+
+
+def load_stores() -> list[dict]:
+    """Every store grocer.nz knows about, as last fetched. Never network."""
+    from . import store as _store
+
+    data = _store._read_json(stores_path(), {}) or {}
+    return list(data.get("stores") or [])
+
+
+def find_stores(query: str, limit: int = 25) -> list[dict]:
+    q = (query or "").strip().lower()
+    rows = load_stores()
+    if not q:
+        return rows[:limit]
+    hit = [s for s in rows
+           if q in f"{s.get('vendor', '')} {s.get('name', '')}".lower()]
+    return hit[:limit]
+
+
+def store_by_id(store_id: int) -> dict:
+    for s in load_stores():
+        if int(s.get("id") or 0) == int(store_id):
+            return s
+    return {}
+
+
+def fetch_stores() -> list[dict]:
+    """Re-download the store list. 2.4 MB, so this is not the weekly job."""
+    from datetime import date
+
+    from . import store as _store
+
+    _check_allowed(STORES_URL)
+    try:
+        import duckdb   # noqa: PLC0415 - deliberately local, see _read_parquet
+    except ImportError as exc:
+        raise GrocerError(
+            "Refreshing the store list needs duckdb, which is not installed:\n"
+            "    pip install duckdb\n"
+            "The shipped list works without it; this is only for picking up "
+            "stores that have opened since.") from exc
+
+    import tempfile
+    from pathlib import Path
+
+    try:
+        r = requests.get(STORES_URL, timeout=TIMEOUT, headers=_headers())
+        r.raise_for_status()
+    except requests.RequestException as exc:
+        raise GrocerError(f"Could not fetch the store list: {exc}") from exc
+
+    # requests decompresses Content-Encoding: br for us, so what arrives is the
+    # database itself despite the .br on the name. Decompressing again fails.
+    tmp = Path(tempfile.gettempdir()) / "grocer_base.duckdb"
+    tmp.write_bytes(r.content)
+    try:
+        con = duckdb.connect(str(tmp), read_only=True)
+        rows = con.execute(
+            "SELECT s.id, v.name, s.name FROM public_stores s "
+            "JOIN public_vendors v ON v.id = s.vendor_id "
+            "WHERE s.is_enabled ORDER BY v.name, s.name").fetchall()
+        con.close()
+    except Exception as exc:  # noqa: BLE001
+        raise GrocerError(f"Could not read the store list: {exc}") from exc
+    finally:
+        tmp.unlink(missing_ok=True)
+
+    stores = [{"id": int(i), "vendor": str(v), "name": str(n)} for i, v, n in rows]
+    _store._write_json(stores_path(), {
+        "source": SOURCE_NAME, "url": SOURCE_URL,
+        "note": "Store ids for --grocer-refresh. Prices are per store.",
+        "fetched": date.today().isoformat(), "stores": stores})
+    return stores
+
+
+# The vendor names in the catalogue are the chain's own spelling; prices.json
+# keys its columns by the names it was written with. Only the ones this project
+# has price columns for need to agree.
+VENDOR_TO_STORE = {
+    "pak'nsave": "PAK'nSAVE",
+    "new world": "New World",
+    "woolworths": "Woolworths",
+}
+
+
+def store_name_for(vendor: str) -> str:
+    """Which prices.json column a vendor's prices belong in.
+
+    Returns "" for a chain the price file has no column for, which the caller
+    must treat as "cannot use this store" rather than inventing a column --
+    a price written under a store nobody costs against is a price that silently
+    does nothing.
+    """
+    return VENDOR_TO_STORE.get((vendor or "").strip().lower(), "")

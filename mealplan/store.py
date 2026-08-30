@@ -19,6 +19,7 @@ PRICES_PATH = ROOT / "prices.json"
 CACHE_PATH = DATA / "recipes.json"
 PLAN_PATH = DATA / "plan.json"
 HISTORY_PATH = DATA / "history.json"
+UNDO_PATH = DATA / "prefs_undo.json"
 
 DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday",
              "saturday", "sunday"]
@@ -53,8 +54,12 @@ def _read_json(path: Path, default: Any) -> Any:
 
 
 def _write_json(path: Path, payload: Any) -> None:
+    # Trailing newline, because config.json and prices.json are tracked in git
+    # and edited by hand as well as by the app. Without it every save through
+    # the page rewrites the last line and shows up as a diff that changed
+    # nothing.
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False),
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
                     encoding="utf-8")
 
 
@@ -121,6 +126,30 @@ def record_history(plan: dict) -> None:
                             "name": d.get("name", "")})
     history.sort(key=lambda h: h.get("date", ""))
     _write_json(HISTORY_PATH, history[-400:])
+
+
+def load_undo() -> dict:
+    """The last preferences change, so it can be reversed from the page.
+
+    On disk rather than in a session, because the app has no sessions and does
+    not want any: one user, one browser, one machine. A file also means an
+    accidental save is still undoable after a restart, which is exactly when
+    somebody would go looking for it.
+    """
+    u = _read_json(UNDO_PATH, {})
+    return u if isinstance(u, dict) else {}
+
+
+def save_undo(snapshot: dict) -> None:
+    _write_json(UNDO_PATH, snapshot)
+
+
+def clear_undo() -> None:
+    """Called by any other action, so the banner never outlives its context."""
+    try:
+        UNDO_PATH.unlink()
+    except (FileNotFoundError, OSError):
+        pass
 
 
 def recent_uids(weeks: int, today: date | None = None) -> dict[str, int]:

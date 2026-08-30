@@ -32,6 +32,44 @@
   </div>
 </header>
 
+{% if undo and undo.before %}
+  {% set lost = (undo.library_before or 0) - (undo.library_after or 0) %}
+  <div class="undo {% if lost > 0 %}shrunk{% endif %}">
+    <div class="undo-text">
+      <strong>Preferences saved.</strong>
+      {% if undo.added_ingredients %}
+        Excluding {{ undo.added_ingredients | join(', ') }}
+        {%- if lost > 0 %} removed {{ lost }} recipe{{ '' if lost == 1 else 's' }}
+          ({{ undo.library_before }} &rarr; {{ undo.library_after }}){% endif %}.
+      {% endif %}
+      {% if undo.removed_ingredients %}
+        Allowing {{ undo.removed_ingredients | join(', ') }} again
+        {%- if lost < 0 %} added back {{ -lost }} recipe{{ '' if lost == -1 else 's' }}{% endif %}.
+      {% endif %}
+      {% if undo.added_methods %}
+        Now avoiding {{ undo.added_methods | join(', ') }}.
+      {% endif %}
+      {% if undo.removed_methods %}
+        No longer avoiding {{ undo.removed_methods | join(', ') }}.
+      {% endif %}
+      {% if undo.people_before != undo.people_after %}
+        Cooking for {{ undo.people_after }} instead of {{ undo.people_before }}.
+      {% endif %}
+      {% if undo.library_after == 0 %}
+        <strong>Nothing is left to plan with.</strong>
+      {% endif %}
+    </div>
+    <div class="undo-actions">
+      <form method="post" action="{{ url_for('undo_prefs') }}">
+        <button type="submit" class="small">Undo</button>
+      </form>
+      <form method="post" action="{{ url_for('dismiss_prefs') }}">
+        <button type="submit" class="ghost small">Dismiss</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
 {% if error %}
   <div class="error">
     <strong>Something went wrong.</strong>

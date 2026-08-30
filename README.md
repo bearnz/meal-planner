@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 201 checks over scoring, planning, costing and the forecast
+python selftest.py       # 225 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -159,6 +159,9 @@ statements:
   have, so it is a heavy penalty and an otherwise-perfect recipe can still win.
   Shallow frying almost never says so in the title, so detection reads the method
   for an oil depth, a frying temperature, or a pan being filled.
+
+Saving shows what changed and offers **Undo** — an aversion removes recipes
+outright, and the only previous sign of that was a count in the header moving.
 
 Both are set on **the preferences page**, which lists every candidate with the
 number of recipes it would affect. That count is the point: "exclude mushrooms"
@@ -339,10 +342,12 @@ python selftest.py                        # 201 checks, all passing
    gate to put it behind. An order-history importer is the obvious next move
    and would reuse most of `parse_receipt`.
 
-4. **The preferences checkboxes submit on click with no confirmation**, and the
-   only feedback is the recipe count in the header changing. A stray click
-   during testing saved an aversion and silently dropped a recipe from the
-   library. Worth a confirm step, or an undo.
+4. ~~The preferences checkboxes save with no confirmation.~~ **Done.** A save
+   now leaves a banner saying what changed and what it cost
+   ("Excluding mushroom, prawn removed 4 recipes (13 → 9)"), with Undo and
+   Dismiss. The snapshot is on disk, so an accidental save is still reversible
+   after a restart. Any other action supersedes the banner, and a save that
+   changes nothing produces none.
 
 5. **Smaller things:** the seasonality table is ~65 items and a starting point
    rather than an authority; `EYE_SLIDE`-style judgement calls in the effort
@@ -357,6 +362,7 @@ run.py            entry point: web app, --sync, --plan, --scores
 selftest.py       offline checks; also the synthetic library
 selftest_extra.py checks for scaling, aversions, methods and seasons
 selftest_cost.py  checks for parsing, units, staples, costing and specials
+selftest_undo.py  checks for the preferences save/undo path, via the routes
 prices.json       the price catalogue - ESTIMATES, see the notes inside
 seed_demo.py      fill the cache with that library to try the app
 config.json       everything tunable

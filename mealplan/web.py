@@ -47,11 +47,13 @@ def index():
         except Exception as exc:  # noqa: BLE001 - the page is the error report
             app.logger.error("generate failed: %s", traceback.format_exc())
             plan, error = None, str(exc)
-    return render_template("plan.html", plan=plan, error=error, cache=cache)
+    return render_template("plan.html", plan=plan, error=error, cache=cache,
+                           undo=store.load_undo())
 
 
 @app.post("/sync")
 def sync():
+    store.clear_undo()
     try:
         service.sync_recipes()
     except Exception as exc:  # noqa: BLE001
@@ -64,6 +66,7 @@ def sync():
 
 @app.post("/regenerate")
 def regenerate():
+    store.clear_undo()
     config, err = _config_or_error()
     if err:
         return render_template("plan.html", plan=None, error=err, cache=None), 400
@@ -78,6 +81,7 @@ def regenerate():
 
 @app.post("/reroll/<iso_day>")
 def reroll(iso_day: str):
+    store.clear_undo()
     config, err = _config_or_error()
     if err:
         return jsonify({"error": err}), 400
@@ -93,6 +97,7 @@ def reroll(iso_day: str):
 
 @app.post("/office/<iso_day>")
 def office(iso_day: str):
+    store.clear_undo()
     config, err = _config_or_error()
     if err:
         return jsonify({"error": err}), 400
@@ -113,6 +118,27 @@ def shopping():
     return render_template("shopping.html",
                            groups=service.shopping_list(plan, people),
                            people=people, plan=plan, error=err)
+
+
+@app.post("/preferences/undo")
+def undo_prefs():
+    config, err = _config_or_error()
+    if err:
+        return render_template("plan.html", plan=None, error=err, cache=None), 400
+    try:
+        service.undo_preferences(config)
+    except Exception as exc:  # noqa: BLE001
+        app.logger.error("undo failed: %s", traceback.format_exc())
+        return render_template("plan.html", plan=store.load_plan(),
+                               error=str(exc), cache=store.load_cache(),
+                               undo=store.load_undo()), 500
+    return redirect(url_for("index"))
+
+
+@app.post("/preferences/dismiss")
+def dismiss_prefs():
+    store.clear_undo()
+    return redirect(url_for("index"))
 
 
 @app.route("/preferences")

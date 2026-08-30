@@ -284,8 +284,8 @@ def pinned(data: dict) -> dict[str, dict]:
     return out
 
 
-def pin(data: dict, item: str, product: Product,
-        create: bool = True) -> tuple[bool, bool]:
+def pin(data: dict, item: str, product: Product, create: bool = True,
+        yield_: float = 1.0, note: str = "") -> tuple[bool, bool]:
     """Record which grocer.nz product an item is. Returns (ok, created).
 
     Creates the entry when the file has never heard of the ingredient, which is
@@ -312,7 +312,25 @@ def pin(data: dict, item: str, product: Product,
         created = True
     spec["grocer"] = {"id": product.id, "name": product.label,
                       "size": product.size, "category": product.category}
+    if yield_ != 1.0 or note:
+        spec["grocer"]["yield"] = round(float(yield_), 3)
+        spec["grocer"]["note"] = note or ""
     return True, created
+
+
+def _yield_of(pin_info: dict) -> float:
+    """How much of what you buy ends up in the pot. 1.0 unless stated.
+
+    Bounded to (0, 1]: a yield above 1 would make food multiply, and one at or
+    below 0 divides by nothing. A bad value is treated as 1.0 rather than
+    raising, because the failure it guards is a typo in a hand-edited file and
+    the safe reading of "I do not understand this" is "no loss".
+    """
+    try:
+        y = float(pin_info.get("yield", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        return 1.0
+    return y if 0.0 < y <= 1.0 else 1.0
 
 
 def state(data: dict) -> dict:
@@ -434,11 +452,23 @@ def refresh(data: dict, store_id: int, storename: str,
             continue
         spec = data["items"][item]
         price, per, unit, why = _reconcile_units(spec, price, per, unit)
+        keep = _yield_of(info)
+        if not why and keep < 1.0:
+            # What the shop sells is not what the recipe asks for. A kilo of
+            # bone-in thigh yields ~680g of meat, so the meat costs the shelf
+            # price divided by the yield -- $8.89/kg on the label is $13.07 for
+            # a kilo of what you actually cook with. Leaving this out is not a
+            # rounding error: it is the whole reason buying bone-in is a choice
+            # rather than a free lunch, and it would make chicken read 44%
+            # cheaper than it is.
+            price = round(price / keep, 4)
         if why:
             skipped.append(f"{item} ({why})")
             continue
         pricesrc.set_price(data, item, storename, price, per)
         note = f"{item}: ${price:.2f} per {per:g}{unit}"
+        if keep < 1.0:
+            note += f"  ({keep:.0%} yield from {info.get('name') or 'it'})"
         if p.sale_cent and p.sale_cent < p.original_cent:
             spec["prices"][storename]["special"] = {
                 "price": round(p.sale_cent / 100.0, 2),

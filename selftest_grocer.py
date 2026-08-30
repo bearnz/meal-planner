@@ -40,6 +40,7 @@ def run(check):
     _shopping_page(check)
     _availability(check)
     _mapped_by_hand(check)
+    _sides(check)
 
 
 def _sizes(check):
@@ -990,7 +991,7 @@ def _availability(check):
     # Held back rather than filtered out: the difference is that somebody is
     # told, and can act on it by marking the cut available again.
     config = store.load_config()
-    library, held = service.eligible_and_held(config)
+    library, held, _ = service.eligible_and_held(config)
     check("the held-back list is populated", bool(held), str(held))
     check("nothing is both in play and held back",
           not ({s.uid for s in library} & {h["uid"] for h in held}))
@@ -1087,3 +1088,44 @@ def _mapped_by_hand(check):
     check("the mirepoix says what to actually put in the trolley",
           "celery" in note.get("note", "").lower()
           or "celery" in note.get("product", "").lower(), str(note))
+
+
+def _sides(check):
+    """Side dishes: out of the week, and still on the shelf."""
+    print("\nside dishes against the real library")
+    from mealplan import service, store
+    from mealplan.planner import is_side
+
+    config = store.load_config()
+    library, _held, sides = service.eligible_and_held(config)
+    names = {d["name"] for d in sides}
+
+    check("the library has side dishes in it", bool(sides), str(sorted(names)))
+    check("no side dish is also in the pool",
+          not (names & {s.name for s in library}))
+    check("every side is named and can be looked up",
+          all(d["name"] and d["uid"] for d in sides))
+    check("the shelf is in a stable order",
+          [d["name"] for d in sides]
+          == sorted(names, key=str.lower),
+          "the page re-renders on every read; the list must not shuffle")
+
+    # The one the tags could not catch. A tray of potatoes, oil and salt was
+    # served as a Monday dinner because Vege is both "vegetarian main" and
+    # "vegetables", and that rescued it from every rule there was.
+    spuds = "Truly Crunchy Roast Potatoes"
+    check(f"{spuds} is a side", spuds in names)
+    check("...and says it was set by hand",
+          any(d["name"] == spuds and d["by_hand"] for d in sides),
+          "the page is the only place anyone is reminded the override exists")
+    check("...and a tagged side does not claim to be",
+          not any(d["by_hand"] for d in sides if d["name"] != spuds))
+
+    # Kept out is not the same as thrown away, which is the whole point of
+    # handing them back rather than dropping them on the floor.
+    scored = {s.name: s for s in service.score_all(config)}
+    check("the sides are real recipes still in the library",
+          all(d["name"] in scored for d in sides))
+    check("every one of them answers to is_side",
+          all(is_side(scored[d["name"]], config) for d in sides))
+

@@ -158,12 +158,13 @@ def _cost_confidence(check):
 # --- faceted category libraries ---------------------------------------------
 
 def _faceted_categories(check):
-    from mealplan.planner import is_dinner
+    from mealplan.planner import is_dinner, is_side
     print("\ntelling a dinner from a side in a faceted library")
 
     class FakeScored:
-        def __init__(self, names):
+        def __init__(self, names, name=""):
             self.category_names = names
+            self.name = name
 
     config = {
         "not_a_meal_categories": ["Side"],
@@ -203,8 +204,43 @@ def _faceted_categories(check):
           not is_dinner(FakeScored(["Dessert"]), config))
     check("...and does not fire on a partial match",
           is_dinner(FakeScored(["Dessert", "Beef"]), config))
-    check("all three rules off means everything is dinner",
+    check("all the rules off means everything is dinner",
           is_dinner(FakeScored(["Side", "Bread"]), {}))
+
+    # A side is not a rejected dinner, so the question is worth asking on its
+    # own: the page offers them by name on the night a roast wants potatoes.
+    check("a side says so as well as not being dinner",
+          is_side(FakeScored(["Greek", "Sauce", "Side", "Vege"]), config))
+    check("...and a dinner does not",
+          not is_side(FakeScored(["Beef", "Casserole"]), config))
+
+    # The tags are somebody else's data and are allowed to be incomplete. A
+    # tray of roast potatoes tagged Potato, Roast, Oven and Vege reads as a
+    # vegetable main to every rule that can only see tags, and the tag it
+    # needed is the one nobody typed.
+    spuds = ["As-is", "Kiwiana", "Oven", "Potato", "Roast", "Vege"]
+    check("a mis-tagged side is a dinner until you say otherwise",
+          is_dinner(FakeScored(spuds, "Truly Crunchy Roast Potatoes"), config))
+    hand = dict(config, side_overrides={"Truly Crunchy Roast Potatoes": True})
+    check("naming it in side_overrides makes it a side",
+          is_side(FakeScored(spuds, "Truly Crunchy Roast Potatoes"), hand))
+    check("...and keeps it out of the pool",
+          not is_dinner(FakeScored(spuds, "Truly Crunchy Roast Potatoes"), hand))
+    check("...and leaves the identically tagged recipe beside it alone",
+          is_dinner(FakeScored(spuds, "Some Other Roast"), hand))
+
+    # Both directions, or a dish the library filed under Side could only be
+    # promoted to dinner by going back into Paprika and retagging it.
+    eaten = dict(config, side_overrides={"Garlic Rice": False})
+    check("a hand-written false beats the Side tag",
+          not is_side(FakeScored(["Rice", "Side"], "Garlic Rice"), eaten))
+    check("...and puts it back in the pool",
+          is_dinner(FakeScored(["Rice", "Side"], "Garlic Rice"), eaten))
+
+    # The override has to be read before the shortcut that keeps uncategorised
+    # recipes, or naming one of those would silently do nothing.
+    check("an uncategorised recipe can still be named a side",
+          not is_dinner(FakeScored([], "Truly Crunchy Roast Potatoes"), hand))
 
 
 # --- the library's own tags --------------------------------------------------

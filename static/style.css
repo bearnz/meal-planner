@@ -423,3 +423,25 @@ li:hover > .parts { display: block; }
    the sentence explaining it, and a flex item puts it on a line of its own. */
 .shop-foot { margin-top: 1.2rem; max-width: 640px; line-height: 1.5; }
 .shop-foot button { margin-left: 0.5rem; vertical-align: baseline; }
+
+/* The side-dish shelf, under the week. Styled like the pantry fold and for the
+   same reason: it is a list you go looking for on a particular night, not one
+   that should compete with the week above it. Folded shut, because six nights
+   out of seven nobody wants it. */
+.sides { margin: 1.4rem 0 2rem; max-width: 640px; }
+.sides > summary {
+  cursor: pointer; font-size: .82rem; color: var(--ink-soft);
+  padding: .2rem 0; list-style: none;
+}
+.sides > summary::before { content: "\25B8  "; opacity: .7; }
+.sides[open] > summary::before { content: "\25BE  "; }
+.sides > summary:hover { color: var(--ink); }
+.sides ul { margin: .4rem 0 0 .2rem; list-style: none; }
+.sides li { font-size: .86rem; line-height: 1.8; }
+/* Same treatment as a recipe title, one size down: these are the same kind of
+   thing -- a dish you click through to cook -- and a default blue underline
+   under seven of them reads as a footer full of links. */
+.sides a { color: inherit; text-decoration: none;
+           border-bottom: 1px solid var(--accent-soft); }
+.sides a:hover { border-bottom-color: var(--accent); }
+.sides .tiny { margin-left: .45rem; color: var(--accent); opacity: .8; }

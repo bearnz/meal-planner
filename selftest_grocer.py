@@ -31,6 +31,8 @@ def run(check):
     _yield(check)
     _buy_note(check)
     _cli_is_wired(check)
+    _pantry(check)
+    _shopping_split(check)
 
 
 def _sizes(check):
@@ -553,3 +555,67 @@ def _cli_is_wired(check):
 
 
 import pathlib  # noqa: E402 - used by the check above
+
+
+def _pantry(check):
+    """Cupboard items stay off the shopping list proper."""
+    print("\npantry staples")
+    from mealplan import service, store as _store
+
+    for text in ["2 tbsp oyster sauce", "1 cup jasmine rice", "1 tsp star anise",
+                 "2 tsp fennel seeds", "1/2 tsp tumeric", "1 tbsp cornflour",
+                 "2 tbsp mirin", "1 tbsp worcestershire sauce",
+                 "1 tsp baking soda", "3 tbsp soy sauce", "2 garlic cloves",
+                 "1/4 tsp dried oregano", "1 tbsp olive oil"]:
+        check(f"{text!r} is a cupboard item", service.is_pantry(text))
+
+    for text in ["500g beef mince", "6 chicken thighs", "2 onions",
+                 "300g baby spinach", "1kg potatoes"]:
+        check(f"{text!r} is not", not service.is_pantry(text))
+
+    check("a heading is not a pantry item", not service.is_pantry("SAUCE:"))
+    check("an unknown ingredient is not assumed to be in the cupboard",
+          not service.is_pantry("2 tbsp powdered unobtainium"),
+          "guessing yes would quietly drop a real purchase off the list")
+
+    # The allowance is the threshold, and it has to be: two kilos of rice for
+    # a paella is a purchase, not "there is rice in the cupboard".
+    check("a staple bought in bulk is still a purchase",
+          not service.is_pantry("2 kg rice"),
+          "the free_allowance the costing uses is the same line here")
+    check("...while a normal amount is not", service.is_pantry("150g rice"))
+
+    # One flag, two consumers. If these ever drift, a line is free in the
+    # costing and still on the shopping list, or the reverse.
+    cat = service.catalogue()
+    staples = [k for k, v in cat.items.items() if v.get("staple")]
+    check("every staple has an allowance",
+          all(float((cat.items[k].get("free_allowance") or 0)) > 0 for k in staples),
+          str([k for k in staples
+               if not float(cat.items[k].get("free_allowance") or 0)]))
+    check("the named pantry items are all staples",
+          all((cat.items.get(cat.match(t)) or {}).get("staple")
+              for t in ["oyster sauce", "rice", "star anise", "cinnamon",
+                        "dried oregano", "sesame seeds"]))
+
+
+def _shopping_split(check):
+    print("\nthe shopping list splits pantry from purchases")
+    from mealplan import service, store as _store
+
+    groups = service.shopping_list(_store.load_plan(), 2)
+    check("there is something to shop for", bool(groups))
+    if not groups:
+        return
+    check("every group has both lists",
+          all("ingredients" in g and "pantry" in g for g in groups))
+    check("something was moved to the pantry",
+          any(g["pantry"] for g in groups),
+          "a week of dinners with no cupboard items at all is suspicious")
+    check("nothing is in both",
+          all(not ({i["text"] for i in g["ingredients"]}
+                   & {i["text"] for i in g["pantry"]}) for g in groups))
+    check("no line was lost in the split",
+          all(all(x["pantry"] is False for x in g["ingredients"]) for g in groups))
+    check("headings stay on the list proper, not in the cupboard",
+          all(not any(i["heading"] for i in g["pantry"]) for g in groups))

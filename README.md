@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 406 checks over scoring, planning, costing and the forecast
+python selftest.py       # 436 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -387,6 +387,22 @@ refuses to re-fetch more often than daily, and the attribution is written into
 `prices.json` and shown on the plan page. If you are going to use this beyond
 one household, ask them first: `info@grocer.nz`.
 
+**The cupboard is not the shopping list.** Oyster sauce, rice, herbs, spices
+and the rest of the pantry are marked `staple` in prices.json, and the shopping
+list folds them into a *"from the pantry &mdash; check you have these"* block
+under each night rather than putting them among the things to buy. Listing soy
+sauce every week is how a list stops being read.
+
+Folded away rather than deleted, deliberately: staples do run out, and a recipe
+wanting three tablespoons of a bottle you do not have is a failed dinner. One
+glance, one line, no scrolling past it every week.
+
+It is the **same flag the costing already uses** to charge only the excess above
+`free_allowance`, so the two cannot drift apart &mdash; anything the price list
+treats as free is the same thing the list treats as already owned. The allowance
+is the threshold in both: two kilos of rice for a paella is a purchase, 150g is
+"there is rice in the cupboard".
+
 **What is left to map.** `python run.py --missing` splits the job three ways,
 because the three piles need different actions:
 
@@ -443,7 +459,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 406 checks, all passing
+python selftest.py                        # 436 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole

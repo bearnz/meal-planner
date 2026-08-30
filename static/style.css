@@ -351,3 +351,15 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
   font-size: .78rem; color: var(--ink-soft); font-style: italic;
 }
 .buy-yield { opacity: .8; font-style: normal; }
+
+/* Pantry items: present, checkable, and deliberately quiet. They are not what
+   you came to this page for. */
+.pantry { margin-top: .5rem; }
+.pantry > summary {
+  cursor: pointer; font-size: .8rem; color: var(--ink-soft);
+  padding: .2rem 0; list-style: none;
+}
+.pantry > summary::before { content: "B8 "; opacity: .7; }
+.pantry[open] > summary::before { content: "BE "; }
+.pantry > summary:hover { color: var(--ink); }
+.pantry ul { margin-top: .3rem; opacity: .85; }

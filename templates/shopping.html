@@ -78,6 +78,29 @@
         {% endfor %}
       </ul>
 
+      {#- Cupboard items, kept off the list proper but not thrown away. Oyster
+          sauce and rice are not weekly purchases and listing them every week is
+          how a list stops being read -- but they do run out, and a recipe
+          wanting three tablespoons of a bottle you do not have is a failed
+          dinner. So: folded away, one glance to check. -#}
+      {% if g.pantry %}
+        <details class="pantry">
+          <summary>{{ g.pantry | length }} from the pantry &mdash; check you have
+            these</summary>
+          <ul>
+            {% for line in g.pantry %}
+              <li>
+                <label><input type="checkbox"><span>{{ line.text }}</span></label>
+                {% if line.buy %}
+                  <span class="buy-note">buy {{ line.buy.product }}{% if line.buy.note %}
+                    &mdash; {{ line.buy.note }}{% endif %}</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% endif %}
+
       {% if g.unscaled %}
         <p class="note tiny">
           {{ g.unscaled }} line{{ '' if g.unscaled == 1 else 's' }} had no

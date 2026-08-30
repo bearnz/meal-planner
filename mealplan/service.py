@@ -522,6 +522,10 @@ def shopping_list(plan: dict, people: int = 0) -> list[dict[str, Any]]:
             continue
         factor, made = quantity.servings_factor(r.get("servings", ""), people)
         lines, unscaled = quantity.scale_ingredients(r.get("ingredients", ""), factor)
+        shaped = [{"text": ln.text, "scaled": ln.scaled, "original": ln.original,
+                   "heading": ln.text.rstrip().endswith(":"),
+                   "buy": buy_note(ln.text), "pantry": is_pantry(ln.text)}
+                  for ln in lines]
         out.append({
             "day_name": d["day_name"],
             "name": d["name"],
@@ -529,12 +533,8 @@ def shopping_list(plan: dict, people: int = 0) -> list[dict[str, Any]]:
             "makes": made,
             "people": people,
             "unscaled": unscaled,
-            "ingredients": [
-                {"text": ln.text, "scaled": ln.scaled, "original": ln.original,
-                 "heading": ln.text.rstrip().endswith(":"),
-                 "buy": buy_note(ln.text)}
-                for ln in lines
-            ],
+            "ingredients": [x for x in shaped if not x["pantry"]],
+            "pantry": [x for x in shaped if x["pantry"]],
         })
     return out
 
@@ -560,6 +560,42 @@ def buy_note(text: str) -> dict[str, Any]:
         return {}
     return {"product": pin.get("name", ""), "note": pin.get("note", ""),
             "yield": float(pin.get("yield", 1) or 1)}
+
+
+def is_pantry(text: str) -> bool:
+    """Whether this line is something already in the cupboard.
+
+    Split out of the shopping list rather than deleted from it. Oyster sauce,
+    rice, herbs and spices are not weekly purchases -- listing them every week
+    is how a list stops being read, which is the whole complaint. But they do
+    run out, and a recipe wanting three tablespoons of oyster sauce when there
+    is none is a failed dinner, so the page keeps them where they can be
+    glanced at instead of dropping them on the floor.
+
+    This is the same `staple` flag the costing already uses to charge only the
+    excess above an allowance, so the two cannot drift apart: anything the
+    price list treats as free is the same thing the shopping list treats as
+    already owned.
+    """
+    cat = catalogue()
+    if not cat.items:
+        return False
+    line = pricing.parse_line(text)
+    if line.why_unpriced == "heading":
+        return False
+    key = cat.match(line.item_raw or line.item) or cat.match(line.item)
+    if not key:
+        return False
+    spec = cat.items.get(key) or {}
+    if not spec.get("staple"):
+        return False
+    # A staple bought in bulk for one recipe is a real purchase: two kilos of
+    # rice for a paella is not "there is rice in the cupboard". The allowance
+    # the costing already uses is exactly the right threshold.
+    amount, _why = cat.to_item_units(line, key)
+    if amount is None:
+        return True
+    return amount <= float(spec.get("free_allowance", 0) or 0)
 
 
 def preference_options(config: dict) -> dict[str, Any]:

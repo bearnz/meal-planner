@@ -1153,7 +1153,9 @@
           "per": 1000,
           "price": 3.0
         }
-      }
+      },
+      "staple": true,
+      "free_allowance": 1500
     },
     "arborio rice": {
       "aliases": [
@@ -1761,7 +1763,12 @@
         "chipotle",
         "cayenne",
         "nutmeg",
-        "allspice"
+        "allspice",
+        "tumeric",
+        "ground coriander",
+        "ground cumin",
+        "sumac",
+        "za'atar"
       ],
       "unit": "g",
       "g_per_ml": 0.45,
@@ -1937,6 +1944,185 @@
         "name": "NZ Pork Shoulder Chops",
         "size": "",
         "category": "Meat & Seafood > Pork"
+      }
+    },
+    "whole spices": {
+      "aliases": [
+        "star anise",
+        "fennel seeds",
+        "cumin seeds",
+        "coriander seeds",
+        "mustard seeds",
+        "sesame seeds",
+        "toasted sesame seeds",
+        "peppercorns",
+        "cardamom",
+        "cloves",
+        "juniper",
+        "caraway",
+        "nigella",
+        "fenugreek",
+        "szechuan peppercorns"
+      ],
+      "unit": "g",
+      "g_per_ml": 0.55,
+      "staple": true,
+      "free_allowance": 25,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 100,
+          "price": 3.5
+        }
+      }
+    },
+    "oyster sauce": {
+      "aliases": [
+        "oyster"
+      ],
+      "unit": "ml",
+      "staple": true,
+      "free_allowance": 40,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 500,
+          "price": 4.0
+        }
+      }
+    },
+    "cornflour": {
+      "aliases": [
+        "cornstarch",
+        "corn flour",
+        "corn starch"
+      ],
+      "unit": "g",
+      "g_per_ml": 0.6,
+      "staple": true,
+      "free_allowance": 30,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 300,
+          "price": 2.5
+        }
+      }
+    },
+    "mirin": {
+      "aliases": [],
+      "unit": "ml",
+      "staple": true,
+      "free_allowance": 40,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 250,
+          "price": 5.5
+        }
+      }
+    },
+    "chinese cooking wine": {
+      "aliases": [
+        "shaoxing",
+        "shaoxing wine",
+        "rice wine"
+      ],
+      "unit": "ml",
+      "staple": true,
+      "free_allowance": 40,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 640,
+          "price": 6.0
+        }
+      }
+    },
+    "worcestershire sauce": {
+      "aliases": [
+        "worcestershire"
+      ],
+      "unit": "ml",
+      "staple": true,
+      "free_allowance": 30,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 300,
+          "price": 4.5
+        }
+      }
+    },
+    "ketchup": {
+      "aliases": [
+        "tomato ketchup",
+        "tomato sauce"
+      ],
+      "unit": "ml",
+      "staple": true,
+      "free_allowance": 40,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 560,
+          "price": 4.0
+        }
+      }
+    },
+    "baking soda": {
+      "aliases": [
+        "bicarbonate of soda",
+        "baking powder",
+        "bicarb"
+      ],
+      "unit": "g",
+      "g_per_ml": 0.9,
+      "staple": true,
+      "free_allowance": 15,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 200,
+          "price": 2.5
+        }
+      }
+    },
+    "sesame oil": {
+      "aliases": [
+        "toasted sesame oil"
+      ],
+      "unit": "ml",
+      "staple": true,
+      "free_allowance": 20,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 250,
+          "price": 6.0
+        }
+      }
+    },
+    "hoisin sauce": {
+      "aliases": [
+        "hoisin"
+      ],
+      "unit": "ml",
+      "staple": true,
+      "free_allowance": 40,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 250,
+          "price": 4.5
+        }
+      }
+    },
+    "curry paste": {
+      "aliases": [
+        "red curry paste",
+        "green curry paste",
+        "thai curry paste"
+      ],
+      "unit": "g",
+      "g_per_ml": 0.9,
+      "staple": true,
+      "free_allowance": 50,
+      "prices": {
+        "PAK'nSAVE": {
+          "per": 220,
+          "price": 4.0
+        }
       }
     }
   },

@@ -38,6 +38,8 @@ def run(check):
     _shopping_split(check)
     _by_item(check)
     _shopping_page(check)
+    _availability(check)
+    _mapped_by_hand(check)
 
 
 def _sizes(check):
@@ -953,3 +955,135 @@ def _shopping_page(check):
     check("the tick store is scoped to a plan",
           "data-plan=" in page,
           "unscoped ticks show last week's shopping crossed off this week's")
+
+
+def _availability(check):
+    """A cut the butcher does not always have keeps its recipe out of the week."""
+    print("\ningredients the shop does not have")
+    from mealplan import pricing, service, store
+
+    cat = service.catalogue()
+    gone = cat.unavailable
+    check("something is marked unavailable", bool(gone), str(sorted(gone)))
+    check("...and absent means available",
+          not any(v.get("available") is False
+                  for k, v in cat.items.items() if k not in gone),
+          "nothing should have to be marked to keep working")
+    check("an unavailable item still has a price",
+          all(cat.items[k].get("prices") for k in gone),
+          "it comes back; the price is what it costs when it does")
+
+    # It is the recipe that is held, not the line. A dinner built on beef
+    # cheeks is not a dinner with beef cheeks left out of it.
+    check("a recipe needing one is spotted",
+          cat.unavailable_in("1.5 kg/3lb beef cheeks , (4 large or 6 small)")
+          == ["beef cheeks"])
+    check("...and one that does not, is not",
+          cat.unavailable_in("500g beef mince\n2 onions") == [])
+    check("a heading is not an ingredient",
+          cat.unavailable_in("BEEF CHEEKS:") == [],
+          "a section title naming the cut is not the cut")
+    check("each unavailable item is named once",
+          cat.unavailable_in("1kg beef cheeks\n500g more beef cheek")
+          == ["beef cheeks"])
+
+    # Held back rather than filtered out: the difference is that somebody is
+    # told, and can act on it by marking the cut available again.
+    config = store.load_config()
+    library, held = service.eligible_and_held(config)
+    check("the held-back list is populated", bool(held), str(held))
+    check("nothing is both in play and held back",
+          not ({s.uid for s in library} & {h["uid"] for h in held}))
+    check("every held-back recipe says what it is waiting for",
+          all(h["needs"] and h["name"] for h in held))
+    check("held-back recipes are the ones that need an unavailable item",
+          all(set(h["needs"]) <= gone for h in held),
+          str([h["needs"] for h in held]))
+    check("load_library returns just the playable ones",
+          len(service.load_library(config)) == len(library))
+
+    # An aversion and an absence are different statements and must not be
+    # conflated: one is permanent and about the household, the other is about
+    # this week and about the shop.
+    check("an unavailable ingredient is not an aversion",
+          not any(h["name"] in str(config.get("avoid_ingredients") or [])
+                  for h in held),
+          "nothing here was excluded for being disliked")
+
+    # And where one does reach the shopping list -- a plan made before the cut
+    # was marked -- it says so on the page read in front of the cabinet.
+    note = service.buy_note("1.5 kg beef cheeks")
+    check("the shopping list would flag it", note.get("unavailable") is True,
+          str(note))
+    check("...and an ordinary line carries no such flag",
+          not service.buy_note("500g beef mince").get("unavailable"))
+
+
+def _mapped_by_hand(check):
+    """The gaps that were closed one at a time, and must stay closed."""
+    print("\ningredients that were once unpriceable")
+    from mealplan import pricing, service
+
+    cat = service.catalogue()
+
+    def key(text):
+        return cat.key_for(pricing.parse_line(text))
+
+    # Products rather than ingredients. Every one of these was "not in the
+    # price list" and blocked a whole recipe's figure.
+    for raw, want in [
+            ("1 cup Pams Smokey BBQ Sauce", "bbq sauce"),
+            ("500g bag Pams Superfoods Super Slaw", "coleslaw"),
+            ("12 Pams Finest Brioche Burger Buns, halved", "burger bun"),
+            ("1 soft hamburger roll, buttered and toasted", "burger bun"),
+            ("1 cup Soy Vay Veri Veri Teriyaki sauce", "teriyaki sauce"),
+            ("400g / 14oz thick-cut chips , frozen", "frozen chips"),
+            ("2 cups frozen diced carrots, peas, corn", "frozen mixed vegetables"),
+            ("5 x 20cm / 8\" pita breads", "pita bread"),
+            ("3 cups vegetables grated or finely chopped", "mirepoix")]:
+        check(f"{raw[:36]!r} is {want}", key(raw) == want, repr(key(raw)))
+
+    # Two that were matching the wrong thing rather than nothing, which is the
+    # worse failure: a number came out, and it was for another ingredient.
+    check("'whole-egg mayonnaise' is mayonnaise, not eggs",
+          key("3 tbsp whole-egg mayonnaise") == "mayonnaise",
+          repr(key("3 tbsp whole-egg mayonnaise")))
+    check("'apple juice' is juice, not apples",
+          key("1 cup apple juice") == "apple juice",
+          repr(key("1 cup apple juice")))
+    check("'green onions' are spring onions, not onions",
+          key("2 green onions , finely sliced") == "spring onion",
+          repr(key("2 green onions , finely sliced")))
+
+    # Cuts the household would swap for braising steak. Not chuck by any
+    # butcher's definition -- chuck is what gets bought instead, which is the
+    # question this file answers.
+    for raw in ("2 lbs. flank steak, cut into thin strips",
+                "500g/1 lb thinly sliced tenderloin, flank, sirloin/Porterhouse"):
+        check(f"{raw[:34]!r} is priced as braising steak",
+              key(raw) == "beef chuck", repr(key(raw)))
+
+    # A cup of a vegetable the catalogue counts whole. One cup of diced onion
+    # is one medium onion, which is the conversion everybody already uses.
+    def amount(text):
+        line = pricing.parse_line(text)
+        return cat.to_item_units(line, cat.key_for(line))[0]
+
+    got = amount("1 cup diced white onion")
+    check("a cup of diced onion is one onion", abs(got - 1.0) < 0.05, str(got))
+    got = amount("2 cups shredded carrots")
+    check("two cups of shredded carrot is two and a half carrots",
+          2.0 < got < 3.0, str(got))
+    got = amount("1/2 cup finely sliced green onions (1-2 stems)")
+    check("half a cup of sliced green onion is a stem or two",
+          1.0 <= got <= 3.0, str(got))
+    got = amount("1 slice good melting cheese")
+    check("a slice of cheese is about twenty grams",
+          15 <= got <= 30, str(got))
+
+    # The mirepoix is priced as the blend it is, and says what to buy -- one
+    # thing the shelves do not stock is a mirepoix.
+    note = service.buy_note("3 cups vegetables grated or finely chopped")
+    check("the mirepoix says what to actually put in the trolley",
+          "celery" in note.get("note", "").lower()
+          or "celery" in note.get("product", "").lower(), str(note))

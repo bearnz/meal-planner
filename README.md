@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 578 checks over scoring, planning, costing and the forecast
+python selftest.py       # 618 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -222,8 +222,18 @@ as a bunch of fresh herbs. The name comes first now and the notes are the
 fallback, which they have to remain: the prep-stripper can eat a name down to
 nothing, and then the notes are all there is.
 
-Between them these two, plus a round of aliases and densities, moved the library
-from 49 recipes costed plainly to 74, and from 24 with no figure at all to 11.
+**Preparation written before the ingredient describes what follows.** "grated
+parmesan" is parmesan; the rule that cuts everything from a prep word to the end
+of the line is right after the ingredient and catastrophic before it, and it was
+leaving 78 lines in a real library with no name at all -- each then matched on
+its footnote instead. Position is the whole distinction, and the one place a
+prep word really is part of the name (a tin of *chopped tomatoes*) keeps working
+because it is left alone.
+
+Between them, plus a round of aliases, densities and the twelve items below,
+the library went from 49 recipes costed plainly to 86, and from 24 with no
+figure at all to one -- and that one is a technique article about rice noodles
+that should not be in the dinner pool in the first place.
 
 ### Getting real prices in
 
@@ -282,6 +292,29 @@ floor, so the report never becomes a list of ten-cent errands.
 Only advertised specials count. A rival being permanently a few cents cheaper is
 not news — it is just a different shop — and reporting it would bury the real
 specials in noise.
+
+### Cuts the shop does not always have
+
+Some ingredients are not a preference and not a price — they are a thing the
+butcher has some weeks and not others. Beef cheeks and picanha are the two here.
+Setting `"available": false` on a catalogue item **holds every recipe that needs
+it out of the week**, and the plan page says so by name:
+
+> *2 recipes held back — beef cheeks and beef rump cap are not in the shops
+> right now (Beef Cheeks Slow Cooked in Red Wine Sauce, Beef Rump Cap Roast)*
+
+Held back rather than filtered, and the difference is that somebody is told. A
+library that quietly shrinks by two looks like a bug; a named cut is a sentence
+you can act on, by deleting the flag the week you see the thing in the cabinet.
+
+Deliberately distinct from an ingredient aversion, which they would otherwise
+look identical to. An aversion is permanent and about the household — *we do not
+eat this*. An absence is temporary and about the shop, so the item keeps its
+price, ready for when it comes back. Absent means available, so nothing has to
+be marked for the file to work.
+
+Where one reaches the shopping list anyway — a plan made before the cut was
+marked — the line says so on the one page read in front of the cabinet.
 
 ### Scaling to the household
 
@@ -562,7 +595,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 578 checks, all passing
+python selftest.py                        # 618 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole
@@ -630,10 +663,10 @@ worth remembering: the synthetic library is clean, and a real one is not.
 
 **Not yet done, in the order it probably matters:**
 
-1. **Every price is an estimate.** 16 of 108 verified at PAK'nSAVE, and 11 of
-   111 recipes still cannot be costed at all -- down from 24, after a pass that
-   taught the parser to prefer a stated weight and the matcher to read a name
-   before its footnote. `python run.py --missing` ranks what to add by how
+1. **Every price is an estimate.** 16 of 120 verified at PAK'nSAVE. Coverage is
+   no longer the problem -- 110 of 111 recipes cost, mean coverage 0.86 -- so
+   what is left is how *right* the numbers are rather than whether there is one.
+   `--missing` ranks what to check by how much of the week it decides. `python run.py --missing` ranks what to add by how
    many recipes each unlocks — it is the fastest way to spend an hour on this.
    `--price` and `--receipt` are the way in; `--stale` lists what is still a
    shipped guess. Until that share climbs the money figures compare recipes

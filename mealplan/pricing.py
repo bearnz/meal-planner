@@ -108,16 +108,33 @@ SIZE_WORDS: dict[str, float] = {
     "baby": 0.5, "jumbo": 1.6,
 }
 
+_PREP_ADVERBS = "finely|roughly|thinly|coarsely|freshly|lightly|well"
+_PREP_VERBS = ("chopped|diced|sliced|minced|grated|crushed|peeled|trimmed|"
+               "shredded|julienned|cubed|halved|quartered|beaten|melted|"
+               "softened|drained|rinsed")
+
 # Trailing noise on an ingredient line. Everything after a comma is nearly
 # always preparation ("finely diced", "plus extra to serve") rather than a
 # different ingredient, so it is cut before matching.
 _PREP_RE = re.compile(
-    r"\b(?:finely|roughly|thinly|coarsely|freshly|lightly)?\s*"
-    r"(?:chopped|diced|sliced|minced|grated|crushed|peeled|trimmed|"
-    r"shredded|julienned|cubed|halved|quartered|beaten|melted|softened|"
-    r"drained|rinsed|to serve|to taste|to garnish|plus extra|optional)\b.*",
+    rf"\b(?:{_PREP_ADVERBS})?\s*"
+    rf"(?:{_PREP_VERBS}|to serve|to taste|to garnish|plus extra|optional)\b.*",
     re.I,
 )
+
+# ...but only when it is not the first thing on the line. Position is the whole
+# distinction: preparation written *after* the ingredient describes what came
+# before it, and everything from there on is noise. Written *before*, it
+# describes what follows, and cutting from it to the end of the line leaves
+# nothing at all -- which is what happened to 78 of the 83 lines in a real
+# library whose ingredient name came out empty ("grated parmesan", "minced
+# ginger", "roughly chopped coriander leaves"). Each was then matched on its
+# footnote instead, so "coriander (sub green onion)" was a spring onion.
+#
+# Leaving the leading words in place costs nothing: "chopped" and "grated" are
+# not ingredient names, the matcher looks for aliases anywhere in the text, and
+# the one place a prep word *is* part of the name -- a tin of chopped tomatoes
+# -- keeps working precisely because it was left alone.
 
 
 @dataclass
@@ -176,7 +193,9 @@ short_name = _short_name
 
 def _strip_prep(text: str) -> str:
     text = text.split(",")[0]
-    text = _PREP_RE.sub("", text)
+    m = _PREP_RE.search(text)
+    if m and m.start() > 0:                       # see _PREP_RE on why not 0
+        text = text[:m.start()]
     text = re.sub(r"\(.*?\)", " ", text)          # "(about 2 medium)"
     return re.sub(r"\s+", " ", text).strip(" .-")
 
@@ -347,6 +366,34 @@ class Catalogue:
                          + r"e?s?\b", hay):
                 return key
         return ""
+
+    @property
+    def unavailable(self) -> set[str]:
+        """Catalogue items marked as not currently in the shops.
+
+        Absent means available, so nothing has to be marked to keep working.
+        This is a standing fact about a cut rather than a live stock check --
+        nothing here fetches anything -- so it is maintained by hand in
+        prices.json alongside the price, and it is the one field in that file
+        that changes what gets *cooked* rather than what a night costs.
+        """
+        return {k for k, v in self.items.items() if v.get("available") is False}
+
+    def unavailable_in(self, ingredients: str) -> list[str]:
+        """Which unavailable items a recipe needs, if any."""
+        if not self.unavailable:
+            return []
+        out = []
+        for raw in (ingredients or "").splitlines():
+            if not raw.strip():
+                continue
+            line = parse_line(raw)
+            if line.why_unpriced == "heading":
+                continue
+            key = self.key_for(line)
+            if key in self.unavailable and key not in out:
+                out.append(key)
+        return sorted(out)
 
     def key_for(self, line: "Line") -> str:
         """Which catalogue item a parsed line is: the name first, notes last.

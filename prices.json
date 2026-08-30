@@ -20,6 +20,7 @@
     "staple:        assumed already in the cupboard",
     "perishable:    a staple that goes off - butter, garlic, fresh herbs. Still assumed owned for costing, but shown on the shopping list rather than folded into the cupboard block, because a week-old bunch of coriander is not in the cupboard",
     "free_allowance: how much of a staple is free before the excess is charged",
+    "available:     set to false for something the shop does not currently carry - beef cheeks, picanha. Recipes needing it are held out of the week and named on the plan page, rather than quietly vanishing. Absent means available, so nothing has to be marked. Set it back when you see the cut in the cabinet",
     "where you shop:  lives in config.json (primary_store), not here -- this file holds a price per chain and the config picks which one is yours"
   ],
   "currency": "NZD",
@@ -424,6 +425,7 @@
       ],
       "unit": "each",
       "g_per_unit": 150,
+      "ml_per_unit": 250,
       "prices": {
         "New World": {
           "per": 1,
@@ -447,12 +449,13 @@
       }
     },
     "spring onion": {
-      "aliases": [
+      "aliases": ["green onion", "green onions", "shallots (green)", 
         "scallion",
         "spring onions"
       ],
       "unit": "each",
       "g_per_unit": 25,
+      "ml_per_unit": 62,
       "prices": {
         "New World": {
           "per": 1,
@@ -525,6 +528,7 @@
       ],
       "unit": "each",
       "g_per_unit": 90,
+      "ml_per_unit": 200,
       "prices": {
         "New World": {
           "per": 1,
@@ -604,7 +608,7 @@
       }
     },
     "chopped tomatoes": {
-      "aliases": [
+      "aliases": ["crushed tomatoes", 
         "tinned tomatoes",
         "canned tomatoes",
         "tin chopped tomatoes",
@@ -1112,6 +1116,7 @@
         "cheese"
       ],
       "unit": "g", "g_per_ml": 0.4,
+      "g_per_unit": 20,
       "prices": {
         "New World": {
           "per": 1000,
@@ -2010,7 +2015,7 @@
       }
     },
     "beef chuck": {
-      "aliases": ["chuck roast", 
+      "aliases": ["flank steak", "flank", "braising steak", "casserole steak", "quick-cooking beef", "chuck roast", 
         "beef chuck",
         "chuck beef",
         "chuck steak",
@@ -2251,7 +2256,19 @@
     "frozen peas": {"aliases": ["peas", "frozen baby peas", "petit pois"], "unit": "g", "g_per_ml": 0.6, "prices": {"New World": {"per": 1000, "price": 5.5}, "PAK'nSAVE": {"per": 1000, "price": 4.2}}},
     "sunflower seeds": {"aliases": ["pumpkin seeds", "pepitas"], "unit": "g", "g_per_ml": 0.58, "staple": true, "free_allowance": 30, "prices": {"New World": {"per": 1000, "price": 12.0}, "PAK'nSAVE": {"per": 1000, "price": 9.5}}},
     "hot sauce": {"aliases": ["salsa", "sriracha", "tabasco", "chilli sauce"], "unit": "ml", "g_per_ml": 1.1, "staple": true, "free_allowance": 30, "prices": {"New World": {"per": 250, "price": 5.5}, "PAK'nSAVE": {"per": 250, "price": 4.4}}},
-    "red wine": {"aliases": ["pinot noir", "cabernet sauvignon", "merlot", "shiraz", "burgundy", "dry red wine", "full bodied red wine"], "unit": "ml", "prices": {"New World": {"per": 750, "price": 14.0}, "PAK'nSAVE": {"per": 750, "price": 11.0}}}
+    "red wine": {"aliases": ["pinot noir", "cabernet sauvignon", "merlot", "shiraz", "burgundy", "dry red wine", "full bodied red wine"], "unit": "ml", "prices": {"New World": {"per": 750, "price": 14.0}, "PAK'nSAVE": {"per": 750, "price": 11.0}}},
+    "mayonnaise": {"aliases": ["mayo", "whole-egg mayonnaise", "aioli"], "unit": "ml", "g_per_ml": 0.95, "staple": true, "perishable": true, "free_allowance": 45, "prices": {"New World": {"per": 400, "price": 5.5}, "PAK'nSAVE": {"per": 400, "price": 4.3}}},
+    "apple juice": {"unit": "ml", "prices": {"New World": {"per": 1000, "price": 3.5}, "PAK'nSAVE": {"per": 1000, "price": 2.6}}},
+    "pita bread": {"aliases": ["pita", "pitta", "pita breads", "flatbread", "flat bread"], "unit": "each", "g_per_unit": 60, "prices": {"New World": {"per": 1, "price": 0.85}, "PAK'nSAVE": {"per": 1, "price": 0.67}}},
+    "burger bun": {"aliases": ["hamburger roll", "hamburger bun", "brioche bun", "brioche burger bun", "burger buns", "soft hamburger roll"], "unit": "each", "g_per_unit": 70, "prices": {"New World": {"per": 1, "price": 0.9}, "PAK'nSAVE": {"per": 1, "price": 0.7}}},
+    "bbq sauce": {"aliases": ["barbecue sauce", "smokey bbq sauce", "smoky bbq sauce"], "unit": "ml", "g_per_ml": 1.2, "staple": true, "free_allowance": 60, "prices": {"New World": {"per": 500, "price": 4.5}, "PAK'nSAVE": {"per": 500, "price": 3.5}}},
+    "teriyaki sauce": {"aliases": ["teriyaki"], "unit": "ml", "g_per_ml": 1.2, "staple": true, "free_allowance": 60, "prices": {"New World": {"per": 250, "price": 5.0}, "PAK'nSAVE": {"per": 250, "price": 3.9}}},
+    "coleslaw": {"aliases": ["slaw", "super slaw", "coleslaw mix", "slaw mix", "superfoods super slaw"], "unit": "g", "prices": {"New World": {"per": 500, "price": 5.0}, "PAK'nSAVE": {"per": 500, "price": 3.9}}},
+    "frozen chips": {"aliases": ["thick-cut chips", "thick cut chips", "oven chips", "french fries", "shoestring fries", "potato chips"], "unit": "g", "prices": {"New World": {"per": 1000, "price": 5.0}, "PAK'nSAVE": {"per": 1000, "price": 3.6}}},
+    "frozen mixed vegetables": {"aliases": ["frozen diced carrots", "frozen vegetables", "mixed frozen vegetables", "frozen mixed veg"], "unit": "g", "g_per_ml": 0.6, "prices": {"New World": {"per": 1000, "price": 4.5}, "PAK'nSAVE": {"per": 1000, "price": 3.2}}},
+    "mirepoix": {"aliases": ["vegetables", "diced vegetables", "mixed vegetables", "soffritto", "trinity", "vegetables grated"], "unit": "g", "g_per_ml": 0.55, "prices": {"New World": {"per": 1000, "price": 5.6}, "PAK'nSAVE": {"per": 1000, "price": 4.4}}, "grocer": {"name": "onion, carrot and celery", "note": "diced, roughly equal parts -- capsicum instead of or as well as the celery", "yield": 1.0}},
+    "beef cheeks": {"aliases": ["beef cheek", "ox cheek", "ox cheeks"], "unit": "g", "available": false, "prices": {"New World": {"per": 1000, "price": 22.0}, "PAK'nSAVE": {"per": 1000, "price": 18.0}}},
+    "beef rump cap": {"aliases": ["picanha", "rump cap", "sirloin cap", "coulotte"], "unit": "g", "available": false, "prices": {"New World": {"per": 1000, "price": 29.0}, "PAK'nSAVE": {"per": 1000, "price": 24.0}}}
   },
   "grocer": {
     "source": "grocer.nz",

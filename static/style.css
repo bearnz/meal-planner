@@ -352,6 +352,17 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
 }
 .buy-yield { opacity: .8; font-style: normal; }
 
+/* ...and the opposite: a cut the shop does not have. Not italic-quiet like the
+   others, because this one is not advice about how to buy the thing, it is the
+   thing not being there. */
+.buy-note.gone { font-style: normal; color: var(--accent); }
+
+/* Recipes kept out of the week for want of an ingredient. Sits under the
+   library count, where "91 recipes in play" would otherwise be the only clue
+   that four went missing. */
+.held-back { color: var(--accent); }
+.held-back .tiny { opacity: .75; }
+
 /* Pantry items: present, checkable, and deliberately quiet. They are not what
    you came to this page for. */
 .pantry { margin-top: .5rem; }

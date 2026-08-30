@@ -18,6 +18,24 @@
         {% if plan.rerolled %}&middot; re-rolled {{ plan.rerolled[11:16] }}
         {% elif plan.generated %}&middot; planned {{ plan.generated[:10] }}{% endif %}
       </p>
+      {#- A library that quietly shrinks looks like a bug. These are not
+          recipes the household will not eat -- they are recipes whose cut the
+          butcher does not always have, so they are out this week and back the
+          week it returns. Named, because the fix is a one-line edit somebody
+          makes after seeing the thing in the cabinet. -#}
+      {% if plan.held_back %}
+        <p class="sub held-back">
+          {{ plan.held_back | length }}
+          recipe{{ '' if plan.held_back | length == 1 else 's' }} held back &mdash;
+          {% set needs = [] %}
+          {% for h in plan.held_back %}{% for n in h.needs %}
+            {% if n not in needs %}{% set _ = needs.append(n) %}{% endif %}
+          {% endfor %}{% endfor %}
+          {{ needs | join(' and ') }}
+          {{ 'is' if needs | length == 1 else 'are' }} not in the shops right now
+          <span class="tiny">({{ plan.held_back | map(attribute='name') | join(', ') }})</span>
+        </p>
+      {% endif %}
     {% endif %}
   </div>
   <div class="actions">

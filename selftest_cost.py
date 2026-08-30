@@ -157,9 +157,28 @@ def _name_before_notes(check, cat):
 
     # The fallback still has to work: the stripper can eat a name to nothing,
     # and then the notes are all there is.
-    L = pricing.parse_line("3 1/2 cups (350g) shredded Colby, Monterey Jack or Oaxaca cheese")
+    L = pricing.parse_line("10 cloves (or 1/4 tsp ground cloves)")
     check("a line whose name strips to nothing falls back to the raw text",
-          not L.item and cat.key_for(L) == "cheddar", f"{L.item!r} {cat.key_for(L)!r}")
+          not L.item and cat.key_for(L) == "whole spices",
+          f"{L.item!r} {cat.key_for(L)!r}")
+
+    # Preparation written *before* the ingredient describes what follows, and
+    # cutting from it to the end of the line leaves nothing -- which handed 78
+    # lines in a real library to their footnote instead of their name.
+    for raw, want in [
+            ("3 tbsp roughly chopped coriander leaves (sub green onion)", "fresh herbs"),
+            ("2 tbsp grated parmesan", "parmesan"),
+            ("1 1/2 tbsp finely minced garlic , about 5 - 6 cloves", "garlic"),
+            ("400g can chopped tomatoes", "chopped tomatoes"),
+            ("1 cup diced tomato , onion, avocado", "tomato")]:
+        L = pricing.parse_line(raw)
+        got = cat.key_for(L)
+        check(f"{raw[:38]!r} is {want}", got == want, f"{got!r} from item {L.item!r}")
+
+    # ...and after it, it still means everything from there on is noise.
+    L = pricing.parse_line("2 onions , finely chopped and set aside")
+    check("preparation after the ingredient is still cut",
+          L.item == "onions", repr(L.item))
 
     # Where two aliases are the same length the answer must not depend on what
     # order the price file happens to list its items in.

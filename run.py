@@ -334,13 +334,18 @@ def cmd_grocer_refresh(args) -> int:
 def cmd_stale(args) -> int:
     """Which prices are real and which are still the shipped estimates."""
     data, _ = _catalogue()
-    fresh = pricesrc.freshness(data)
+    # The config's store, not the price file's own default. Those disagree:
+    # prices.json still ships with New World as its primary while the config
+    # says PAK'nSAVE, and asking the file gave a freshness figure for a shop
+    # nobody here uses -- 0 checked, while every real price sat next door.
+    shop = str(store.load_config().get("primary_store") or "")
+    fresh = pricesrc.freshness(data, shop)
     rows = pricesrc.stale_items(data)
     never = [r for r in rows if not r[2]]
     old = [r for r in rows if r[2]]
-
-    print(f"\n  {fresh['checked']}/{fresh['total']} prices have ever been "
-          f"checked ({fresh['share']:.0%}).\n")
+    print(f"\n  {fresh['checked']}/{fresh['total']} prices at "
+          f"{fresh['store'] or 'your store'} have ever been checked "
+          f"({fresh['share']:.0%}). {fresh['every']} across all chains." + "\n")
     for item, shop, when in old:
         print(f"    {when}  {item} @ {shop}")
     if old:

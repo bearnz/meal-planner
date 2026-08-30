@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 374 checks over scoring, planning, costing and the forecast
+python selftest.py       # 382 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -365,10 +365,11 @@ cannot say both:
 A night can be fully covered and entirely invented, which is the case the second
 mark exists for. The week's header leads with **how much of this week's cost is
 real**, weighted by money rather than by line or by night: one checked cut of
-beef is most of a dinner, and nineteen guessed spices are not. The file-level
-"13 of 209 prices checked" stays as secondary context, because it reads far
-worse than the plan actually is &mdash; most of those 209 are ingredients this
-week never touches.
+beef is most of a dinner, and nineteen guessed spices are not. The secondary count is
+per **store**, not per file: prices.json holds a price per item per chain, and
+you shop at one. Counting all three made the bar a number that could not be
+moved &mdash; 123 of 209 entries belong to shops `--grocer-refresh` will never
+fetch, so it had a hard ceiling of 41% that had nothing to do with effort.
 
 **On being a good guest.** Their robots.txt allows this (`Allow: /`) and their
 terms prohibit only unauthorised access and disrupting the service. That makes
@@ -397,7 +398,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 374 checks, all passing
+python selftest.py                        # 382 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole

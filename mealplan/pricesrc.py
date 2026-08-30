@@ -243,14 +243,45 @@ def stale_items(data: dict, days: int = 120) -> list[tuple[str, str, str]]:
     return out
 
 
-def freshness(data: dict) -> dict:
-    """A summary for the page: how much of this price list is real."""
-    total = sum(len(spec.get("prices") or {})
-                for spec in (data.get("items") or {}).values())
-    checked = total - len(stale_items(data, days=10 ** 6))
+def freshness(data: dict, store: str = "") -> dict:
+    """How much of this price list is real, at the shop you actually use.
+
+    Counted at one store on purpose. The file holds a price per item *per
+    chain* -- 209 entries across three of them -- and the whole point of the
+    project is that you shop at one. Counting all three made the progress bar
+    a number that could not be moved: --grocer-refresh fetches one store, so
+    123 of those entries belonged to shops nobody was going to check, and the
+    bar had a hard ceiling of 41% that had nothing to do with effort. It read
+    as "you have barely started" after pricing every ingredient you own.
+
+    The other chains' prices are not dead weight -- `find_savings` needs them
+    to spot a special worth a detour -- they are simply not something anyone
+    will ever verify, so they do not belong in a progress figure.
+
+    `every` keeps the old whole-file count for anything that wants it.
+    """
+    items = (data.get("items") or {}).values()
+    store = store or str(data.get("primary_store") or "")
+    every = sum(len(spec.get("prices") or {}) for spec in items)
+
+    if store:
+        entries = [(spec.get("prices") or {}).get(store) for spec in items]
+        here = [e for e in entries if e]
+        checked = sum(1 for e in here if e.get("checked"))
+        total = len(here)
+    else:
+        total = every
+        checked = every - len(stale_items(data, days=10 ** 6))
+
     return {
+        "store": store,
         "total": total,
         "checked": checked,
         "share": (checked / total) if total else 0.0,
         "stale": len(stale_items(data)),
+        "every": every,
+        # Items with no price at this store at all: not "unchecked" but
+        # "absent", and the two want different actions from the reader.
+        "absent": sum(1 for spec in items
+                      if store and store not in (spec.get("prices") or {})),
     }

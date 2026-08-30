@@ -77,7 +77,10 @@
   "avoid_ingredients": [],
   "avoid_methods": [
     "deep frying",
-    "shallow frying"
+    "shallow frying",
+    "barbecue",
+    "raw fish",
+    "offal"
   ],
   "primary_store": "PAK'nSAVE",
   "min_saving": 0.5

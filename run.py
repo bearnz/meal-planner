@@ -123,52 +123,96 @@ def cmd_receipt(args) -> int:
 
 
 def cmd_missing(args) -> int:
-    """Which missing prices would buy the most, over the whole library.
+    """What is left to map, split by what it would actually take to fix.
 
-    Ranked by how many *recipes* each one blocks rather than how many lines it
-    appears on, because the thing being bought here is priceable dinners. One
-    entry for beef chuck unlocks a whole night; ten entries for spices that
-    appear once each unlock nothing, since they were never what the estimate
-    was missing.
+    Three piles, because they need three different actions and lumping them
+    together is what made the first version of this hard to work from.
+
+    In the list already, priced from a shipped guess: one --grocer-find and
+    one --grocer-pin each, and the ranking is by how much of the library's
+    cost each one makes real. That is the pile to work top-down.
+
+    Not in the list at all: the same two commands, except the pin creates the
+    entry. Ranked by how many recipes mention it, with the ones that block a
+    whole recipe on their own called out - those are worth doing out of order.
+
+    And the rest, which pinning cannot fix: a line with no amount on it, or a
+    unit nothing knows a density for. Those want a g_per_ml or a rewritten
+    line, not a price, and counting them in with the others makes the job look
+    bigger than it is.
     """
-    from collections import Counter
+    from collections import defaultdict
+
+    from mealplan import grocer
 
     config = store.load_config()
     cat = service.catalogue()
     if not cat.items:
         print("\n  No prices.json to compare against.\n")
         return 1
-
+    shop = str(config.get("primary_store") or cat.primary)
     library = service.load_library(config)
-    blocking: Counter[str] = Counter()
-    major: Counter[str] = Counter()
+
+    spend: dict = defaultdict(float)
+    seen_in: dict = defaultdict(set)
+    unknown: dict = defaultdict(set)
+    blocks: dict = defaultdict(int)
+    other = 0
     unusable = 0
 
     for s in library:
         made = service.quantity.servings_factor(s.recipe.servings, 1)[1]
-        c = pricing.cost_recipe(s.recipe.ingredients, made or 4, cat,
-                                str(config.get("primary_store") or ""))
+        c = pricing.cost_recipe(s.recipe.ingredients, made or 4, cat, shop)
         if not c.usable:
             unusable += 1
-        seen = set()
-        for line in c.unpriced:
-            item = (line.item or line.raw).strip().lower()[:40]
-            if item and item not in seen:
-                seen.add(item)
-                blocking[item] += 1
-        for item in c.major_unpriced:
-            major[item.strip().lower()[:40]] += 1
+        for ln in c.lines:
+            if ln.priced and ln.matched and not ln.free and not ln.verified:
+                spend[ln.matched] += ln.cost
+                seen_in[ln.matched].add(s.name)
+        for ln in c.unpriced:
+            if ln.why_unpriced == "not in the price list":
+                key = (ln.item or ln.item_raw or ln.raw).strip().lower()[:34]
+                if key:
+                    unknown[key].add(s.name)
+            else:
+                other += 1
+        for m in c.major_unpriced:
+            blocks[m.strip().lower()[:34]] += 1
 
-    print(f"\n  {unusable} of {len(library)} dinners cannot be costed at all.\n")
-    if major:
-        print("  Missing a MAIN ingredient (these block a whole recipe each):\n")
-        for item, n in major.most_common(20):
-            print(f"    {n:3} recipe(s)   {item}")
-    print("\n  Most common unpriced ingredients overall:\n")
-    for item, n in blocking.most_common(30):
-        print(f"    {n:3} recipe(s)   {item}")
-    print('\n  Add one with:  python run.py --price "beef chuck" 18.99 '
-          '--per 1000\n')
+    pinned = set(grocer.pinned(cat.data))
+    guessed = [(k, v) for k, v in spend.items() if k not in pinned]
+    guessed.sort(key=lambda kv: -kv[1])
+    unknowns = sorted(unknown.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+
+    print(f"\n  {unusable} of {len(library)} dinners cannot be costed at all.")
+    print(f"  {len(pinned)} ingredients are pinned to a real product.\n")
+
+    if guessed:
+        print("  ALREADY IN THE LIST, still priced from a guess")
+        print("  (biggest first: this is how much of the library's cost each "
+              "one makes real)\n")
+        print(f"    {'ingredient':<24}{'$ across library':>17}{'recipes':>9}")
+        for k, v in guessed[:args.limit or 15]:
+            print(f"    {k:<24}{v:>17.0f}{len(seen_in[k]):>9}")
+
+    if unknowns:
+        print("\n  NOT IN THE LIST AT ALL")
+        print("  (pinning one creates its entry; * blocks a whole recipe on "
+              "its own)\n")
+        print(f"    {'ingredient':<36}{'recipes':>9}")
+        for k, v in unknowns[:args.limit or 20]:
+            mark = " *" if blocks.get(k) else ""
+            print(f"    {k:<36}{len(v):>9}{mark}")
+        print(f"\n    ({len(unknowns)} distinct in total)")
+
+    if other:
+        print(f"\n  {other} more lines cannot be priced for a reason a pin will "
+              f"not fix\n  (no amount given, or no density known for the unit) "
+              f"- those want a\n  g_per_ml in prices.json or a clearer recipe "
+              f"line, not a price.")
+
+    print('\n  Next:  python run.py --grocer-find "<ingredient>"')
+    print('         python run.py --grocer-pin  "<ingredient>" <id>\n')
     return 0
 
 
@@ -200,7 +244,7 @@ def cmd_grocer_stores(args) -> int:
         rows = grocer.fetch_stores()
         print(f"\n  Re-read {len(rows)} stores from grocer.nz.")
     query = args.grocer_stores if isinstance(args.grocer_stores, str) else ""
-    rows = grocer.find_stores(query, limit=int(args.limit) if query else 400)
+    rows = grocer.find_stores(query, limit=(args.limit or 25) if query else 400)
     if not rows:
         print(f"\n  No store matched {query!r}.\n")
         return 1
@@ -232,7 +276,7 @@ def cmd_grocer_find(args) -> int:
     config = store.load_config()
     store_id, _ = _grocer_store(config)
     term = args.grocer_find
-    hits = grocer.search(term, store_id, limit=int(args.limit),
+    hits = grocer.search(term, store_id, limit=args.limit or 8,
                          category=args.category)
     grocer.remember(hits)
     if not hits:
@@ -414,7 +458,10 @@ def main() -> int:
                     help="update every pinned price from grocer.nz")
     ap.add_argument("--force", action="store_true",
                     help="with --grocer-refresh, ignore the refresh interval")
-    ap.add_argument("--limit", default=8, help="how many candidates to show")
+    # No default here: --grocer-find wants a handful and --missing wants a
+    # worklist, so each command picks its own and this only overrides.
+    ap.add_argument("--limit", type=int, default=0,
+                    help="how many rows to show (per-command default)")
     ap.add_argument("--category", default="",
                     help='narrow --grocer-find, e.g. "Meat & Seafood"')
     ap.add_argument("--stale", action="store_true",

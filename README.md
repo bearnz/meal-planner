@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 404 checks over scoring, planning, costing and the forecast
+python selftest.py       # 406 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -387,6 +387,19 @@ refuses to re-fetch more often than daily, and the attribution is written into
 `prices.json` and shown on the plan page. If you are going to use this beyond
 one household, ask them first: `info@grocer.nz`.
 
+**What is left to map.** `python run.py --missing` splits the job three ways,
+because the three piles need different actions:
+
+- **Already in the list, still a guess** &mdash; one `--grocer-find` and one
+  `--grocer-pin` each, ranked by how much of the library's cost each one makes
+  real. Work top-down: bacon is $34 across 91 dinners, a lone spice is cents.
+- **Not in the list at all** &mdash; the same two commands, except the pin
+  creates the entry. Ranked by how many recipes mention it, with a `*` on the
+  ones that block a whole recipe on their own.
+- **Everything else** &mdash; lines with no amount on them, or a unit with no
+  known density. Those want a `g_per_ml` or a clearer recipe line, not a price,
+  and counting them with the others makes the job look bigger than it is.
+
 **Buy it whole and prepare it yourself.** A recipe asking for shredded Colby
 or boneless thighs is asking for a *prepared* form, and the shop mostly sells
 the whole thing. So a pin can say what you really buy, and how much of it
@@ -430,7 +443,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 404 checks, all passing
+python selftest.py                        # 406 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole

@@ -430,10 +430,30 @@ garlic" land together on the alias table's authority rather than on a guess; an
 ingredient the catalogue has never heard of merges only with an identical one.
 Amounts are added only when **every** contributing line converts to the same
 unit &mdash; one "handful of parsley" among three weighed ones makes the sum a
-lie, so the total is dropped and the lines are shown as written instead. Counts
-round **up**, since nobody sells a fifth of a broccoli. And every entry keeps
-its parts, naming which nights wanted it and what each asked for, because a
-number with no working behind it is not checkable while you are holding the bag.
+lie, so the total is dropped and the lines are shown as written instead. And
+every entry keeps its parts, naming which nights wanted it and what each asked
+for, because a number with no working behind it is not checkable while you are
+holding the bag.
+
+**Counts round up one recipe at a time, and only then add.** Two dinners each
+wanting half an onion are two onions: you cut an onion for a recipe and the
+other half goes soft, so the half Tuesday did not use is not the half Thursday
+gets. Rounding the week's total instead is the version that looks tidier and
+sends you home an onion short. It is a *recipe* at a time rather than a line at
+a time, so a dish wanting half an onion in the marinade and half in the pan
+still buys one. Weights are untouched -- rounding those up buys a kilo of mince
+to cover 900g, which is a different and worse habit.
+
+**Counted things are named in the units people say.** `unit_label` in
+prices.json turns "13 garlic" into "13 cloves garlic", and celery into stalks,
+broccoli into heads, fennel into bulbs. Nothing derives these, because there is
+no rule. `pack_of` and `pack_label` add what the thing is *sold* in where that
+differs -- garlic reads "13 cloves garlic &mdash; 2 bulbs", since thirteen
+cloves is the honest amount and is not a thing you can pick up. Garlic is
+deliberately vague for the same reason it is worth doing: being a clove out
+does not matter, which is exactly why quoting it to the gram was worse than
+useless. And `plural` is written down only where "+s" is wrong, which so far is
+cod and chillies.
 
 A staple is judged one night at a time, deliberately: seven teaspoons of olive
 oil is not a bottle of olive oil to buy, and re-testing the weekly sum against a

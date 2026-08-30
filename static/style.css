@@ -392,10 +392,16 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
 .part b { font-weight: 600; opacity: 0.75; }
 li:hover > .parts { display: block; }
 
+/* What the counted thing is sold in, when the count is not a purchasable
+   quantity. Beside the amount rather than under it: it is the same fact said
+   again in shop units, not a separate instruction like a buy-note. */
+.pack-hint { margin-left: 0.5rem; font-size: 0.76em; color: var(--ink-soft); }
+.pack-hint::before { content: "\2014\00a0"; }
+
 /* A staple that goes off. On the list, because it runs out -- but marked, so
    the eye can skip the ones already in the fridge. Quiet on purpose: this is a
    hint about a line, not a warning about one. */
-.perish > label > span::after {
+.perish > label > span > .what::after {
   content: " \25CF"; color: var(--effort); font-size: 0.62em;
   vertical-align: 0.25em; opacity: 0.85;
 }

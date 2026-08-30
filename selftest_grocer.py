@@ -34,6 +34,7 @@ def run(check):
     _pantry(check)
     _perishable_staples(check)
     _the_same_thing_written_differently(check)
+    _counted_things(check)
     _shopping_split(check)
     _by_item(check)
     _shopping_page(check)
@@ -717,6 +718,111 @@ def _the_same_thing_written_differently(check):
           service.is_pantry("3/4 cup stale bread, torn"))
     check("...and most of a loaf is shopping",
           not service.is_pantry("400g sourdough, cubed"))
+
+
+def _counted_things(check):
+    """Vegetables you buy whole, and the units people actually say."""
+    print("\nthings that are counted rather than weighed")
+    from mealplan import pricing, service
+
+    total = service._week_total
+
+    # The rule: round up a recipe at a time, then add. Two dinners each wanting
+    # half an onion are two onions -- the half Tuesday did not use is not the
+    # half Thursday gets, it is soft by then.
+    check("two half onions on two nights are two onions",
+          total({"Tue": 0.5, "Thu": 0.5}, "each") == 2.0,
+          str(total({"Tue": 0.5, "Thu": 0.5}, "each")))
+    check("...and rounding the week's total instead would say one",
+          round(sum([0.5, 0.5])) == 1,
+          "which is the version that sends you home an onion short")
+    check("half an onion twice in ONE recipe is still one onion",
+          total({"Tue": 1.0}, "each") == 1.0,
+          "a recipe at a time, not a line at a time")
+    check("a whole number is not nudged up",
+          total({"Tue": 3.0, "Thu": 1.0}, "each") == 4.0,
+          str(total({"Tue": 3.0, "Thu": 1.0}, "each")))
+    check("1.2 on one night is two",
+          total({"Tue": 1.2}, "each") == 2.0)
+
+    # Weights are not touched: rounding those up would buy a kilo of mince to
+    # cover 900g, which is a different and much worse habit.
+    check("grams simply add", total({"Tue": 250.0, "Thu": 300.0}, "g") == 550.0)
+    check("...and are not rounded up", total({"Tue": 0.4}, "g") == 0.4)
+
+    # The noun a thing is counted in. Nothing derives these -- garlic comes in
+    # cloves, celery in stalks, broccoli in heads, and there is no rule.
+    cat = service.catalogue()
+    label = service._quantity_label
+    for key, want in [("garlic", "3 cloves"), ("celery", "3 stalks"),
+                      ("broccoli", "3 heads"), ("fennel", "3 bulbs")]:
+        got = label(3.0, "each", cat.items.get(key) or {})
+        check(f"{key} is counted in {want.split()[1]}", got == want, got)
+    check("one of something is singular",
+          label(1.0, "each", cat.items["garlic"]) == "1 clove",
+          label(1.0, "each", cat.items["garlic"]))
+    check("something with no noun is just a number",
+          label(2.0, "each", cat.items.get("onion") or {}) == "2")
+
+    # Garlic is quoted in cloves and sold in bulbs, and both are worth saying.
+    hint = service._pack_hint
+    check("thirteen cloves is two bulbs",
+          hint(13.0, cat.items["garlic"]) == "2 bulbs",
+          hint(13.0, cat.items["garlic"]))
+    check("...and ten is one", hint(10.0, cat.items["garlic"]) == "1 bulb")
+    check("...and one clove still means buying a bulb",
+          hint(1.0, cat.items["garlic"]) == "1 bulb")
+    check("nothing sold in packs gets a pack hint",
+          hint(3.0, cat.items["onion"]) == "",
+          "an onion is sold as an onion")
+
+    # Garlic moved from grams to cloves. Both spellings of an amount have to
+    # arrive as cloves, or the allowance and the count are in different units.
+    def amount(text):
+        line = pricing.parse_line(text)
+        key = cat.match(line.item_raw or line.item) or cat.match(line.item)
+        return cat.to_item_units(line, key)[0] if key else None
+
+    check("'3 garlic cloves' is 3", amount("3 garlic cloves") == 3.0,
+          str(amount("3 garlic cloves")))
+    check("'15g garlic, minced' is 3 cloves", amount("15g garlic, minced") == 3.0,
+          str(amount("15g garlic, minced")))
+    check("'1 tbsp minced garlic' is 3 cloves",
+          amount("1 tbsp minced garlic") == 3.0,
+          str(amount("1 tbsp minced garlic")))
+    check("garlic's allowance is quoted in cloves too",
+          float(cat.items["garlic"]["free_allowance"]) < 20,
+          "a 30-clove allowance is the gram figure left behind")
+
+    # "4 onions", not "4 onion". +s with an escape hatch, since English plurals
+    # are not derivable and the alternative is "2 cods".
+    plural = service._plural
+    check("more than one onion is onions",
+          plural("onion", 4.0, "each", cat.items["onion"]) == "onions")
+    check("one onion is an onion",
+          plural("onion", 1.0, "each", cat.items["onion"]) == "onion")
+    check("cod says its own plural", plural("cod", 2.0, "each",
+          cat.items["cod"]) == "cod", "'2 cods' is what the rule would give")
+    check("chillies too", plural("chilli", 3.0, "each",
+          cat.items["chilli"]) == "chillies")
+    check("a weight is left alone",
+          plural("butter", 60.0, "g", cat.items["butter"]) == "butter")
+    check("an entry that names its unit is left alone",
+          plural("garlic", 13.0, "each", cat.items["garlic"]) == "garlic",
+          "'13 cloves garlics' -- the garlic is not the thing being counted")
+
+    # The bulb and the seed are two ingredients, kept apart by the matcher
+    # taking the longest alias first and by nothing else.
+    def key_for(text):
+        line = pricing.parse_line(text)
+        return cat.match(line.item_raw or line.item) or cat.match(line.item)
+
+    check("'1/4 medium fennel, chopped' is the vegetable",
+          key_for("1/4 medium fennel , chopped (Note 2)") == "fennel",
+          repr(key_for("1/4 medium fennel , chopped (Note 2)")))
+    check("'2 tsp fennel seeds' is still a spice",
+          key_for("2 tsp fennel seeds") == "whole spices",
+          repr(key_for("2 tsp fennel seeds")))
 
 
 def _shopping_split(check):

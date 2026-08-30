@@ -115,11 +115,21 @@ def office(iso_day: str):
 
 @app.route("/shopping")
 def shopping():
+    """The week's ingredients, by night or merged by item.
+
+    The view is a query parameter rather than a saved preference on purpose:
+    which one you want depends on whether you are cooking or shopping, and both
+    happen in the same week. A link is also something you can bookmark, which a
+    toggle stored server-side is not.
+    """
     config, err = _config_or_error()
     plan = store.load_plan()
     people = int((config or {}).get("household_size", 0) or 0)
+    by = "item" if request.args.get("by") == "item" else "recipe"
+    merged = service.shopping_by_item(plan, people) if by == "item" else None
     return render_template("shopping.html",
                            groups=service.shopping_list(plan, people),
+                           merged=merged, by=by,
                            people=people, plan=plan, error=err)
 
 

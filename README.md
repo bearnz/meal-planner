@@ -390,8 +390,8 @@ one household, ask them first: `info@grocer.nz`.
 **The cupboard is not the shopping list.** Oyster sauce, rice, herbs, spices
 and the rest of the pantry are marked `staple` in prices.json, and the shopping
 list folds them into a *"from the pantry &mdash; check you have these"* block
-under each night rather than putting them among the things to buy. Listing soy
-sauce every week is how a list stops being read.
+rather than putting them among the things to buy. Listing soy sauce every week
+is how a list stops being read.
 
 Folded away rather than deleted, deliberately: staples do run out, and a recipe
 wanting three tablespoons of a bottle you do not have is a failed dinner. One
@@ -402,6 +402,55 @@ It is the **same flag the costing already uses** to charge only the excess above
 treats as free is the same thing the list treats as already owned. The allowance
 is the threshold in both: two kilos of rice for a paella is a purchase, 150g is
 "there is rice in the cupboard".
+
+**Except the ones that go off.** A second flag, `perishable`, splits that
+cupboard in half. Star anise keeps for a year and butter, garlic, ginger, fresh
+chillies and a bunch of coriander are gone by Thursday &mdash; they are owned in
+exactly the same sense, and folding them away is what would make the list wrong
+rather than merely long. So a perishable staple stays on the list proper,
+marked with a dot, and you tick it off if you already have it. `perishable` is a
+split *within* `staple` rather than a third kind of item: everything marked
+perishable is also a staple, is still free to the costing under its allowance,
+and is still a purchase above it. A stick of butter is shopping; a knob of it is
+not.
+
+Putting them where they can be seen is also what found three lines of dried
+chillies matching the *fresh* chilli entry, and a cup of chilli soaking water
+being scored as an ingredient to buy. Both had been wrong since the catalogue
+was written and both were invisible while they sat in a collapsed block.
+
+**Two ways to read the list.** *By night* is the default and is for cooking: one
+card per dinner, in recipe order, quantities untouched. *By item* is for
+shopping &mdash; one entry per ingredient with the week added up, because you do
+not walk to the vegetables three times because three nights want an onion.
+
+The merge is careful about what it refuses to do. Two lines merge when they
+resolve to the same **catalogue key**, so "2 garlic cloves" and "1 tbsp minced
+garlic" land together on the alias table's authority rather than on a guess; an
+ingredient the catalogue has never heard of merges only with an identical one.
+Amounts are added only when **every** contributing line converts to the same
+unit &mdash; one "handful of parsley" among three weighed ones makes the sum a
+lie, so the total is dropped and the lines are shown as written instead. Counts
+round **up**, since nobody sells a fifth of a broccoli. And every entry keeps
+its parts, naming which nights wanted it and what each asked for, because a
+number with no working behind it is not checkable while you are holding the bag.
+
+A staple is judged one night at a time, deliberately: seven teaspoons of olive
+oil is not a bottle of olive oil to buy, and re-testing the weekly sum against a
+per-recipe allowance would put the whole cupboard back on the list.
+
+The by-item order is **alphabetical, and that is a placeholder**. The order worth
+having is the order of the shelves, so the list is walked once from the door to
+the checkout &mdash; and that is a property of a store rather than of the data, so
+it needs a layout per shop before it can be anything else. Everything that sorts
+the merged list goes through `service._shelf_order`, so there is one place to
+change.
+
+**Ticks are remembered.** The list is read standing in a shop on a phone whose
+screen locks every thirty seconds, so a tick that does not survive a reload is a
+decoration. They live in `localStorage`, scoped to the plan they were made
+against, so re-planning starts a clean list rather than showing last week's
+shopping crossed off this week's dinners.
 
 **What is left to map.** `python run.py --missing` splits the job three ways,
 because the three piles need different actions:
@@ -549,8 +598,8 @@ worth remembering: the synthetic library is clean, and a real one is not.
    portion by 22 — the number is shown rather than corrected, because a party
    recipe that genuinely serves 22 looks identical; a dozen recipes carry their
    directions twice (`ABBREVIATED RECIPE` then `FULL RECIPE`), which inflates
-   the step count; and the shopping list still does not merge quantities across
-   recipes, which is the one deliberate gap.
+   the step count; and the shopping list merges quantities across recipes only
+   where the units agree, which leaves a tail of entries shown as written.
 
 ## Layout
 
@@ -580,6 +629,7 @@ mealplan/
   store.py        config, recipe cache, plan and history on disk
   web.py          Flask routes
 templates/        plan, shopping list, preferences
+static/           style.css, shop.js (remembers which lines are ticked off)
 data/             cache, current plan, history (all gitignored)
 ```
 
@@ -593,8 +643,9 @@ data/             cache, current plan, history (all gitignored)
 - Serving sizes show as a scaling factor (`serves 4 (x0.5)`) rather than being
   rewritten. Paprika quantities are free text, and "0.5 splashes of oil" is
   worse than doing the arithmetic yourself.
-- The shopping list groups ingredients by night rather than merging them.
-  Paprika quantities are free text ("a splash", "2 tbsp, plus extra"), and
-  adding those up means parsing them, which is worse done badly than not at all.
+- The shopping list groups ingredients by night by default. The *by item* view
+  merges them where it honestly can and says so where it cannot: Paprika
+  quantities are free text ("a splash", "2 tbsp, plus extra"), so a total is
+  offered only when every line behind it converted to the same unit.
 - History records what the plan says, so it doubles as a log of what you ate.
   Only days that have actually passed count towards the repeat penalty.

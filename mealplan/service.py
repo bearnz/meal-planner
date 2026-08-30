@@ -6,6 +6,7 @@ scoring needs poking at.
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import date, datetime, timedelta
 from typing import Any, Callable
@@ -503,17 +504,148 @@ def toggle_office_day(config: dict, iso_day: str) -> dict:
 def shopping_list(plan: dict, people: int = 0) -> list[dict[str, Any]]:
     """Ingredients for the week, grouped by the night they are for, scaled.
 
-    Still grouped rather than merged into one deduplicated list: quantities are
-    free text and adding "a splash" to "2 tbsp, plus extra" has no answer.
-    Scaling a single line is a different and much smaller problem -- multiply
-    the leading number, leave every word alone -- which is why that half is now
-    done and the merge still is not.
+    Grouped rather than merged: quantities are free text and adding "a splash"
+    to "2 tbsp, plus extra" has no answer. `shopping_by_item` takes the other
+    view and merges what it can, which is what the toggle on the page picks
+    between -- and the reason the merge is a separate function rather than a
+    flag is that it answers a different question and can only answer it partly.
 
     Anything the parser could not read is passed through untouched and counted,
     so the page can say so. A line silently halved wrongly cannot be recovered
     from; one flagged as unscaled can be checked in two seconds.
     """
+    out = []
+    for day in _shopping_days(plan, people):
+        shaped = day.pop("lines")
+        out.append(day | {
+            # Perishables sit with the purchases, not in the cupboard block:
+            # they are pre-ticked instead, which says "you probably have this"
+            # without hiding it from someone standing in the vegetable aisle.
+            "ingredients": [x for x in shaped if x["kind"] != "pantry"],
+            "pantry": [x for x in shaped if x["kind"] == "pantry"],
+        })
+    return out
+
+
+def shopping_by_item(plan: dict, people: int = 0) -> dict[str, Any]:
+    """The same week merged into one list, an entry per ingredient.
+
+    The other way to read the list, and the way you read it in the shop: you do
+    not walk to the vegetables three times because three nights want an onion.
+    So every night's lines are pooled and the ones naming the same ingredient
+    are added up.
+
+    Three things about the merge, all of them about what it refuses to do.
+
+    Two lines merge when they resolve to the same **catalogue key**, not when
+    their text is similar -- so "2 garlic cloves" and "1 tbsp minced garlic"
+    land together because the price list already knows both are garlic, and the
+    alias table is the one place that knowledge is written down. An ingredient
+    the catalogue has never heard of is grouped by its own name and merges only
+    with an identical one, which is the honest answer: guessing that "chuck
+    beef" and "beef chuck" are one thing is a guess, and a wrong one puts a
+    kilo of the wrong cut in the trolley.
+
+    Amounts are added only when **every** contributing line converts into the
+    item's own unit. One "a handful of parsley" in among three weighed ones
+    makes the total a lie, so the total is dropped and the lines are listed as
+    written. That is the same rule the costing follows for the same reason.
+
+    And the parts are kept whatever happens. A merged entry always says which
+    nights wanted it and what each of them asked for, because a single number
+    with no working is not checkable while you are holding the bag.
+    """
+    cat = catalogue()
+    entries: dict[str, dict[str, Any]] = {}
+    for day in _shopping_days(plan, people):
+        for ln in day["lines"]:
+            if ln["heading"]:
+                continue                      # recipe structure; means nothing merged
+            e = entries.setdefault(ln["group"], {
+                "key": ln["group"], "name": ln["name"], "kind": ln["kind"],
+                "unit": ln["unit"], "amount": 0.0, "total": True,
+                "buy": ln["buy"], "parts": [],
+            })
+            e["parts"].append({"day_name": day["day_name"], "recipe": day["name"],
+                               "text": ln["text"], "buy": ln["buy"]})
+            # Deliberately the strictest kind any single night gave it, not a
+            # fresh verdict on the weekly total. Seven nights of a teaspoon of
+            # olive oil is not a bottle of olive oil to buy, and re-testing the
+            # sum against a per-recipe allowance would put every staple in the
+            # cupboard back on the list -- which is the noise the split exists
+            # to remove. One night wanting 200g of butter still buys butter.
+            if _KIND_ORDER[ln["kind"]] < _KIND_ORDER[e["kind"]]:
+                e["kind"] = ln["kind"]
+            e["buy"] = e["buy"] or ln["buy"]
+            if ln["amount"] is None or ln["unit"] != e["unit"]:
+                e["total"] = False
+            else:
+                e["amount"] += ln["amount"]
+
+    items = sorted(entries.values(), key=_shelf_order)
+    for e in items:
+        e["amount"] = round(e["amount"], 2) if e["total"] else None
+        e["qty"] = _quantity_label(e["amount"], e["unit"])
+        e["nights"] = len({p["day_name"] for p in e["parts"]})
+    return {
+        "ingredients": [e for e in items if e["kind"] != "pantry"],
+        "pantry": [e for e in items if e["kind"] == "pantry"],
+    }
+
+
+def _quantity_label(amount: float | None, unit: str) -> str:
+    """How much of something to buy, written the way you would say it.
+
+    Two things here are not formatting. A count is rounded **up**: nobody sells
+    a fifth of a broccoli, so a week needing 0.2 of one needs one, and 1.4
+    chicken breasts is a packet of two. Rounding to nearest would send you home
+    without dinner about half the time, which is the only direction of error
+    that matters in a shop.
+
+    And "each" is never printed. It is the catalogue's word for "this is
+    counted, not weighed", which is worth knowing inside the costing and reads
+    as nonsense on a list -- "0.2 each broccoli".
+    """
+    if amount is None:
+        return ""
+    if unit == "each":
+        return str(math.ceil(amount - 1e-9))
+    # Grams and millilitres to the nearest whole one: a shopping list quoting
+    # 60.29 g of butter is precision about an estimate.
+    if amount >= 10:
+        return f"{round(amount):g} {unit}".strip()
+    return f"{round(amount, 1):g} {unit}".strip()
+
+
+# Which classification wins when one ingredient arrives wearing two of them
+# across a week: a real purchase beats a perishable beats a cupboard item.
+# Lowest wins, and it has to be this way round -- a night that needs 200g of
+# butter is a night you buy butter, whatever the other four nights thought.
+_KIND_ORDER = {"": 0, "perishable": 1, "pantry": 2}
+
+
+def _shelf_order(entry: dict[str, Any]) -> tuple:
+    """The order a merged list is walked in.
+
+    Alphabetical for now, which is a placeholder and is meant to be one. The
+    order worth having is the order the shelves are in, so the list is walked
+    once from the door to the checkout instead of doubling back -- and that
+    order is a property of a *store*, not of the data, so it will need a layout
+    per shop before it can be anything but this. Everything that sorts the
+    merged list goes through here so there is one place to change.
+    """
+    return (entry["name"].lower(),)
+
+
+def _shopping_days(plan: dict, people: int) -> list[dict[str, Any]]:
+    """Each night in the plan with its ingredient lines scaled and classified.
+
+    Both views are built from this, so the two cannot disagree about what a
+    line says, what it is really buying, or whether it is already in the
+    cupboard -- which they would within a week of being written twice.
+    """
     cache = store.load_cache()
+    cat = catalogue()
     by_uid = {r["uid"]: r for r in (cache.get("recipes") or [])}
     out = []
     for d in plan.get("days", []):
@@ -522,10 +654,6 @@ def shopping_list(plan: dict, people: int = 0) -> list[dict[str, Any]]:
             continue
         factor, made = quantity.servings_factor(r.get("servings", ""), people)
         lines, unscaled = quantity.scale_ingredients(r.get("ingredients", ""), factor)
-        shaped = [{"text": ln.text, "scaled": ln.scaled, "original": ln.original,
-                   "heading": ln.text.rstrip().endswith(":"),
-                   "buy": buy_note(ln.text), "pantry": is_pantry(ln.text)}
-                  for ln in lines]
         out.append({
             "day_name": d["day_name"],
             "name": d["name"],
@@ -533,10 +661,85 @@ def shopping_list(plan: dict, people: int = 0) -> list[dict[str, Any]]:
             "makes": made,
             "people": people,
             "unscaled": unscaled,
-            "ingredients": [x for x in shaped if not x["pantry"]],
-            "pantry": [x for x in shaped if x["pantry"]],
+            "lines": [_shape_line(ln.text, ln.scaled, ln.original, cat)
+                      for ln in lines],
         })
     return out
+
+
+def _shape_line(text: str, scaled: bool, original: str,
+                cat: pricing.Catalogue) -> dict[str, Any]:
+    """One ingredient line, read once, for whichever view is being drawn.
+
+    Read *once* is the point. The two public callers used to ask three separate
+    functions about the same line and each of them re-parsed it and re-fetched
+    the catalogue; the by-item view would have made that four. Everything a
+    line is asked about downstream comes off this one parse.
+    """
+    heading = text.rstrip().endswith(":")
+    out = {"text": text, "scaled": scaled, "original": original,
+           "heading": heading, "buy": {}, "kind": "", "group": "",
+           "name": "", "amount": None, "unit": ""}
+    if heading or not cat.items:
+        out["group"] = out["name"] = text.strip()
+        return out
+
+    line = pricing.parse_line(text)
+    if line.why_unpriced == "heading":
+        out["heading"] = True
+        out["group"] = out["name"] = text.strip()
+        return out
+
+    key = cat.match(line.item_raw or line.item) or cat.match(line.item)
+    spec = (cat.items.get(key) or {}) if key else {}
+    amount, _why = cat.to_item_units(line, key) if key else (None, "")
+
+    # An ingredient the price list has never heard of is grouped under its own
+    # name, so it merges with an identical line and nothing else.
+    out["name"] = key or pricing.short_name(line)
+    out["group"] = key or f"?{out['name'].lower()}"
+    out["unit"] = spec.get("unit", "") if key else ""
+    out["amount"] = amount
+    out["kind"] = _staple_kind(spec, amount)
+    out["buy"] = _buy_from(spec)
+    return out
+
+
+def _staple_kind(spec: dict, amount: float | None) -> str:
+    """"" to buy, "perishable" to check the fridge for, "pantry" for cupboard.
+
+    Built on the same `staple` flag the costing uses to charge only the excess
+    above an allowance, so the two cannot drift apart: anything the price list
+    treats as free is the same thing the shopping list treats as already owned.
+
+    `perishable` is the split within that. Oyster sauce and star anise sit in a
+    cupboard for years and listing them weekly is how a list stops being read;
+    butter, garlic and a bunch of coriander are owned in exactly the same sense
+    and are still gone by Thursday. So the flag decides which of two ways an
+    already-owned ingredient is shown, and neither of them is "not shown".
+
+    A staple bought in bulk for one recipe is a real purchase either way: two
+    kilos of rice for a paella is not "there is rice in the cupboard", and the
+    allowance the costing already uses is exactly the right threshold. An
+    amount that could not be converted is treated as small, since a line with
+    no readable quantity is a pinch of something far more often than it is a
+    catering pack.
+    """
+    if not spec.get("staple"):
+        return ""
+    allowance = float(spec.get("free_allowance", 0) or 0)
+    if amount is not None and amount > allowance:
+        return ""
+    return "perishable" if spec.get("perishable") else "pantry"
+
+
+def _buy_from(spec: dict) -> dict[str, Any]:
+    """What to actually pick up, when it is not what the line says."""
+    pin = spec.get("grocer") or {}
+    if not pin.get("note") and float(pin.get("yield", 1) or 1) >= 1.0:
+        return {}
+    return {"product": pin.get("name", ""), "note": pin.get("note", ""),
+            "yield": float(pin.get("yield", 1) or 1)}
 
 
 def buy_note(text: str) -> dict[str, Any]:
@@ -548,54 +751,21 @@ def buy_note(text: str) -> dict[str, Any]:
     worked out -- and if the list does not say so, the number on the plan page
     was quietly costed against a purchase nobody made.
     """
-    cat = catalogue()
-    if not cat.items:
-        return {}
-    line = pricing.parse_line(text)
-    if line.why_unpriced == "heading":
-        return {}
-    key = cat.match(line.item_raw or line.item) or cat.match(line.item)
-    pin = ((cat.items.get(key) or {}).get("grocer") or {}) if key else {}
-    if not pin.get("note") and float(pin.get("yield", 1) or 1) >= 1.0:
-        return {}
-    return {"product": pin.get("name", ""), "note": pin.get("note", ""),
-            "yield": float(pin.get("yield", 1) or 1)}
+    return _shape_line(text, True, text, catalogue())["buy"]
 
 
 def is_pantry(text: str) -> bool:
-    """Whether this line is something already in the cupboard.
+    """Whether this line is a cupboard item, kept off the list proper.
 
-    Split out of the shopping list rather than deleted from it. Oyster sauce,
-    rice, herbs and spices are not weekly purchases -- listing them every week
-    is how a list stops being read, which is the whole complaint. But they do
-    run out, and a recipe wanting three tablespoons of oyster sauce when there
-    is none is a failed dinner, so the page keeps them where they can be
-    glanced at instead of dropping them on the floor.
-
-    This is the same `staple` flag the costing already uses to charge only the
-    excess above an allowance, so the two cannot drift apart: anything the
-    price list treats as free is the same thing the shopping list treats as
-    already owned.
+    Cupboard specifically, not "already owned": a perishable staple is owned in
+    the same sense and still has to be looked at. See `_staple_kind`.
     """
-    cat = catalogue()
-    if not cat.items:
-        return False
-    line = pricing.parse_line(text)
-    if line.why_unpriced == "heading":
-        return False
-    key = cat.match(line.item_raw or line.item) or cat.match(line.item)
-    if not key:
-        return False
-    spec = cat.items.get(key) or {}
-    if not spec.get("staple"):
-        return False
-    # A staple bought in bulk for one recipe is a real purchase: two kilos of
-    # rice for a paella is not "there is rice in the cupboard". The allowance
-    # the costing already uses is exactly the right threshold.
-    amount, _why = cat.to_item_units(line, key)
-    if amount is None:
-        return True
-    return amount <= float(spec.get("free_allowance", 0) or 0)
+    return _shape_line(text, True, text, catalogue())["kind"] == "pantry"
+
+
+def is_perishable(text: str) -> bool:
+    """Whether this line is a staple that goes off, so it stays on the list."""
+    return _shape_line(text, True, text, catalogue())["kind"] == "perishable"
 
 
 def preference_options(config: dict) -> dict[str, Any]:

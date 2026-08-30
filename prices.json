@@ -18,6 +18,7 @@
     "g_per_unit:    typical weight of one, so '2 onions' can be costed",
     "g_per_ml:      density, so 'cups of flour' can be costed by weight",
     "staple:        assumed already in the cupboard",
+    "perishable:    a staple that goes off - butter, garlic, fresh herbs. Still assumed owned for costing, but shown on the shopping list rather than folded into the cupboard block, because a week-old bunch of coriander is not in the cupboard",
     "free_allowance: how much of a staple is free before the excess is charged",
     "where you shop:  lives in config.json (primary_store), not here -- this file holds a price per chain and the config picks which one is yours"
   ],
@@ -1436,7 +1437,11 @@
         "warm water",
         "hot water",
         "iced water",
-        "tap water"
+        "tap water",
+        "chilli soaking water",
+        "soaking water",
+        "cooking water",
+        "pasta water"
       ],
       "unit": "ml",
       "staple": true,
@@ -1524,6 +1529,7 @@
       "unit": "g",
       "g_per_ml": 0.91,
       "staple": true,
+      "perishable": true,
       "free_allowance": 40,
       "prices": {
         "New World": {
@@ -1594,6 +1600,7 @@
       "unit": "g",
       "g_per_unit": 5,
       "staple": true,
+      "perishable": true,
       "free_allowance": 30,
       "prices": {
         "New World": {
@@ -1801,6 +1808,7 @@
       "unit": "g",
       "g_per_unit": 20,
       "staple": true,
+      "perishable": true,
       "free_allowance": 10,
       "prices": {
         "New World": {
@@ -1822,11 +1830,39 @@
       "unit": "each",
       "g_per_unit": 15,
       "staple": true,
+      "perishable": true,
       "free_allowance": 15,
       "prices": {
         "New World": {
           "per": 1,
           "price": 0.6
+        }
+      }
+    },
+    "dried chilli": {
+      "aliases": [
+        "dried chillies",
+        "dried chillis",
+        "chillies, dried",
+        "guajillo",
+        "ancho",
+        "chillies de arbol",
+        "chilli de arbol",
+        "chinese chilli",
+        "chilli flakes",
+        "chilli powder"
+      ],
+      "unit": "g",
+      "staple": true,
+      "free_allowance": 25,
+      "prices": {
+        "New World": {
+          "per": 100,
+          "price": 9.5
+        },
+        "PAK'nSAVE": {
+          "per": 100,
+          "price": 7.9
         }
       }
     },
@@ -1837,6 +1873,7 @@
       ],
       "unit": "g",
       "staple": true,
+      "perishable": true,
       "free_allowance": 25,
       "prices": {
         "New World": {

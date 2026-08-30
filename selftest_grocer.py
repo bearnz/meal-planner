@@ -33,6 +33,7 @@ def run(check):
     _cli_is_wired(check)
     _pantry(check)
     _perishable_staples(check)
+    _the_same_thing_written_differently(check)
     _shopping_split(check)
     _by_item(check)
     _shopping_page(check)
@@ -661,6 +662,61 @@ def _perishable_staples(check):
 
 def _kind(service, text):
     return service._shape_line(text, True, text, service.catalogue())["kind"]
+
+
+def _the_same_thing_written_differently(check):
+    """Names a person supplied for things the catalogue was missing.
+
+    Every line here is a fact about ingredients rather than about code, and the
+    alias table is where this project writes such facts down. They are checked
+    because that is also the easiest kind of knowledge to lose: an alias list
+    tidied, a key renamed, and an ingredient quietly stops being priced with no
+    error anywhere -- which is how three of these came to be missing.
+    """
+    print("\ningredients under a second name")
+    from mealplan import pricing, service
+
+    cat = service.catalogue()
+
+    def key_for(text):
+        line = pricing.parse_line(text)
+        return cat.match(line.item_raw or line.item) or cat.match(line.item)
+
+    for text, want in [
+            # The same cut, written either way round.
+            ("0.12 kg chuck beef , cut into 6 large pieces", "beef chuck"),
+            ("500g beef chuck", "beef chuck"),
+            ("1kg chuck steak, diced", "beef chuck"),
+            # Allspice, as one word and as two, and the blend recipes offer
+            # in its place.
+            ("1/4 tsp all spice powder (sub mixed spice)", "ground spices"),
+            ("1 tsp allspice", "ground spices"),
+            # Stems, stalks and sticks are all one vegetable.
+            ("1/2 celery stems , roughly chopped", "celery"),
+            ("2 celery stalks, diced", "celery"),
+            ("3 sticks celery", "celery"),
+            # Already right, and worth pinning: the reason parmesan looked
+            # unmapped was a line with no quantity in it, not a missing entry.
+            ("Parmesan cheese , finely grated, for serving", "parmesan"),
+            ("3/4 cup stale bread like sourdough, ciabatta", "bread"),
+    ]:
+        check(f"{text[:38]!r} is {want}", key_for(text) == want,
+              repr(key_for(text)))
+
+    # Parmesan is not cheddar. "cheese" is an alias of cheddar and the matcher
+    # takes the longest alias first, which is the only thing keeping these
+    # apart -- so it is worth an assertion rather than a comment.
+    check("parmesan is not swallowed by the generic cheese alias",
+          key_for("50g grated parmesan cheese") == "parmesan",
+          key_for("50g grated parmesan cheese"))
+    check("...and plain cheese still is cheddar",
+          key_for("1 cup grated cheese") == "cheddar")
+
+    # Bread is assumed to be in the house. A loaf's worth is not.
+    check("a handful of breadcrumbs is a cupboard item",
+          service.is_pantry("3/4 cup stale bread, torn"))
+    check("...and most of a loaf is shopping",
+          not service.is_pantry("400g sourdough, cubed"))
 
 
 def _shopping_split(check):

@@ -729,6 +729,28 @@
         }
       }
     },
+    "celery": {
+      "aliases": [
+        "celery stem",
+        "celery stems",
+        "celery stalk",
+        "celery stalks",
+        "celery sticks",
+        "celery rib"
+      ],
+      "unit": "each",
+      "g_per_unit": 40,
+      "prices": {
+        "New World": {
+          "per": 1,
+          "price": 0.5
+        },
+        "PAK'nSAVE": {
+          "per": 1,
+          "price": 0.4
+        }
+      }
+    },
     "broccoli": {
       "unit": "each",
       "g_per_unit": 350,
@@ -1265,9 +1287,15 @@
       "aliases": [
         "loaf",
         "sourdough",
-        "breadcrumbs"
+        "ciabatta",
+        "stale bread",
+        "breadcrumbs",
+        "panko"
       ],
       "unit": "g",
+      "g_per_ml": 0.2,
+      "staple": true,
+      "free_allowance": 200,
       "prices": {
         "New World": {
           "per": 700,
@@ -1771,6 +1799,8 @@
         "cayenne",
         "nutmeg",
         "allspice",
+        "all spice",
+        "mixed spice",
         "tumeric",
         "ground coriander",
         "ground cumin",
@@ -1928,7 +1958,10 @@
     },
     "beef chuck": {
       "aliases": [
-        "beef chuck"
+        "beef chuck",
+        "chuck beef",
+        "chuck steak",
+        "beef chuck steak"
       ],
       "unit": "g",
       "prices": {

@@ -301,11 +301,19 @@ def cmd_grocer_pin(args) -> int:
               file=sys.stderr)
         return 1
 
-    _ok, created = grocer.pin(data, key, product)
+    if not 0.0 < args.keep <= 1.0:
+        print(f"\n  --yield must be above 0 and at most 1 (got {args.keep})." + "\n", file=sys.stderr)
+        return 1
+    _ok, created = grocer.pin(data, key, product, yield_=args.keep,
+                              note=args.note)
     store._write_json(store.PRICES_PATH, data)
     verb = "is a new item, pinned to" if created else "is now"
     print(f"\n  {key!r} {verb} grocer.nz product {pid} "
           f"({product.label}, {product.size or 'loose/kg'}).")
+    if args.keep < 1.0:
+        print(f"  {args.keep:.0%} of what you buy ends up in the pot"
+              f"{', ' + args.note if args.note else ''} - the shelf "
+              f"price is divided by that.")
     print("  Run --grocer-refresh to price it.\n")
     return 0
 
@@ -396,6 +404,12 @@ def main() -> int:
                     help="search grocer.nz for a product to price ITEM with")
     ap.add_argument("--grocer-pin", nargs=2, metavar=("ITEM", "PRODUCT_ID"),
                     help="remember which grocer.nz product ITEM is")
+    ap.add_argument("--yield", dest="keep", type=float, default=1.0,
+                    help="with --grocer-pin: the share of what you buy that "
+                         "ends up in the pot, e.g. 0.68 for bone-in chicken")
+    ap.add_argument("--note", default="",
+                    help="with --grocer-pin: why this product, e.g. "
+                         "\"bought bone-in and boned out\"")
     ap.add_argument("--grocer-refresh", action="store_true",
                     help="update every pinned price from grocer.nz")
     ap.add_argument("--force", action="store_true",

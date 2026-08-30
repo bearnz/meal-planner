@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 385 checks over scoring, planning, costing and the forecast
+python selftest.py       # 404 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -387,6 +387,32 @@ refuses to re-fetch more often than daily, and the attribution is written into
 `prices.json` and shown on the plan page. If you are going to use this beyond
 one household, ask them first: `info@grocer.nz`.
 
+**Buy it whole and prepare it yourself.** A recipe asking for shredded Colby
+or boneless thighs is asking for a *prepared* form, and the shop mostly sells
+the whole thing. So a pin can say what you really buy, and how much of it
+survives the preparation:
+
+```bash
+python run.py --grocer-pin "cheddar" 8911 --note "block, grated at home"
+python run.py --grocer-pin "chicken thigh" 26814 --yield 0.68     --note "bought bone-in and boned out"
+```
+
+`--yield` is the share of what you buy that ends up in the pot, and leaving it
+out is not a rounding error. Bone-in thigh is **$8.89/kg** against **$15.99**
+for fillets, but a kilo of it is only ~680 g of meat: the real cost is
+**$13.07/kg**. Priced without the yield it reads $8.89 &mdash; 44% cheap, and
+buying bone-in looks like a free lunch instead of the modest 18% saving it is.
+Grating your own cheese has a yield of 1.0 and needs only the note.
+
+The **shopping list** shows what to put in the trolley under any line it
+applies to &mdash; *"buy Pams Colby Cheese &mdash; block, grated at home"* &mdash;
+because that is the only page anyone reads while standing in the shop, and a
+price worked out from a block has to say so or the plan was costed against a
+purchase nobody made.
+
+Still to come: showing both options side by side, so the saving from breaking
+it down yourself is visible rather than assumed.
+
 **The one number to be suspicious of** is the pack size. A blank size means the
 product is sold loose and priced *per kilogram*; anything else is the price of
 that pack. Get it backwards and a $28.99/kg chuck steak becomes $28.99 for the
@@ -404,7 +430,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 385 checks, all passing
+python selftest.py                        # 404 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole

@@ -201,7 +201,7 @@
         },
         "PAK'nSAVE": {
           "per": 1.0,
-          "price": 1.76,
+          "price": 1.44,
           "checked": "2026-08-30"
         },
         "Woolworths": {
@@ -210,10 +210,12 @@
         }
       },
       "grocer": {
-        "id": 26818,
-        "name": "NZ Skinless Chicken Thigh Fillet",
+        "id": 26814,
+        "name": "NZ Chicken Thighs Bone In",
         "size": "",
-        "category": "Meat & Seafood > Chicken & Poultry"
+        "category": "Meat & Seafood > Chicken & Poultry",
+        "yield": 0.68,
+        "note": "bought bone-in and boned out"
       }
     },
     "chicken breast": {
@@ -1050,18 +1052,22 @@
           "price": 19.99
         },
         "PAK'nSAVE": {
-          "per": 1000,
-          "price": 15.99,
-          "special": {
-            "price": 12.99,
-            "until": "2026-09-06",
-            "note": "1kg blocks"
-          }
+          "per": 1000.0,
+          "price": 12.88,
+          "checked": "2026-08-30"
         },
         "Woolworths": {
           "per": 1000,
           "price": 18.5
         }
+      },
+      "grocer": {
+        "id": 8911,
+        "name": "Pams Colby Cheese",
+        "size": "1kg",
+        "category": "Chilled > Dairy & Eggs",
+        "yield": 1.0,
+        "note": "block, grated at home"
       }
     },
     "parmesan": {
@@ -1922,7 +1928,7 @@
     "attribution": "Price data from grocer.nz, used for personal, non-commercial use.",
     "store_id": 222,
     "store": "PAK'nSAVE",
-    "fetched": "2026-08-30T10:08:40+00:00",
+    "fetched": "2026-08-30T10:52:31+00:00",
     "etag": "\"14f4c0b3605edad257cd155b732ea6b7\""
   }
 }

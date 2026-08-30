@@ -343,3 +343,11 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
 .freshness .dim { opacity: .6; }
 .bar-fill.part { background: #c8a06e; }
 .bar-fill.good { background: #7cc88c; }
+
+/* "Buy the block and grate it yourself" -- shown under the ingredient it
+   replaces, because this is the only page anyone reads inside the shop. */
+.buy-note {
+  display: block; margin: .1rem 0 .35rem 1.6rem;
+  font-size: .78rem; color: var(--ink-soft); font-style: italic;
+}
+.buy-yield { opacity: .8; font-style: normal; }

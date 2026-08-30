@@ -28,6 +28,8 @@ def run(check):
     _verified(check)
     _live_money(check)
     _freshness_is_about_your_shop(check)
+    _yield(check)
+    _buy_note(check)
 
 
 def _sizes(check):
@@ -444,3 +446,78 @@ def _freshness_is_about_your_shop(check):
           cat.primary == "Woolworths", cat.primary)
     check("...falling back to the first listed store, not to the file",
           pricing.Catalogue({"stores": ["X", "Y"]}).primary == "X")
+
+
+def _yield(check):
+    """Buying the whole thing and breaking it down yourself."""
+    print("\nbuying whole and preparing it yourself")
+    from mealplan import grocer
+
+    check("no yield stated means none is lost", grocer._yield_of({}) == 1.0)
+    check("a stated yield is used", grocer._yield_of({"yield": 0.68}) == 0.68)
+    # A typo must not multiply food or divide by nothing.
+    for bad in (0, -1, 1.5, "nonsense", None):
+        check(f"a yield of {bad!r} is refused and read as no loss",
+              grocer._yield_of({"yield": bad}) == 1.0)
+
+    real = grocer.fetch_prices
+    try:
+        # Bone-in thigh at $8.89/kg. Boneless fillet on the same shelf is
+        # $15.99. Buying bone-in is only worth it because of the yield, and
+        # ignoring the yield is what makes it look like a free lunch.
+        grocer.fetch_prices = lambda s, etag="": (
+            {26814: grocer.Price(26814, 889, 0, 0, "")}, "T", False)
+
+        plain: dict = {"items": {}}
+        grocer.pin(plain, "chicken thigh",
+                   grocer.Product(26814, "Bone In Thighs", "", "", ""))
+        grocer.refresh(plain, 222, "S", force=True)
+        shelf = plain["items"]["chicken thigh"]["prices"]["S"]["price"]
+        check("with no yield the shelf price is taken as is", shelf == 8.89,
+              str(shelf))
+
+        boned: dict = {"items": {}}
+        grocer.pin(boned, "chicken thigh",
+                   grocer.Product(26814, "Bone In Thighs", "", "", ""),
+                   yield_=0.68, note="bought bone-in and boned out")
+        r = grocer.refresh(boned, 222, "S", force=True)
+        got = boned["items"]["chicken thigh"]["prices"]["S"]["price"]
+        check("a yield divides the shelf price", abs(got - 8.89 / 0.68) < 0.01,
+              f"${got} -- a kilo of bone-in is 680g of meat")
+        check("...which is dearer than the label, not cheaper", got > 8.89,
+              "the whole point is that some of what you buy is bone")
+        check("...and still beats the boneless fillet at $15.99", got < 15.99,
+              "otherwise nobody would bother boning them out")
+        check("the refresh says a yield was applied",
+              any("68% yield" in line for line in r["updated"]), str(r["updated"]))
+
+        # 44% is the size of the mistake this exists to stop.
+        check("ignoring the yield would understate it badly",
+              abs(shelf / got - 0.68) < 0.01,
+              "the shelf price is 68% of the true cost of the meat")
+    finally:
+        grocer.fetch_prices = real
+
+    # A pin with no yield and no note stays as small as it was.
+    clean: dict = {"items": {}}
+    grocer.pin(clean, "beef mince", grocer.Product(1, "Mince", "", "", ""))
+    check("a plain pin gains no yield field",
+          "yield" not in clean["items"]["beef mince"]["grocer"])
+
+
+def _buy_note(check):
+    """The shopping list has to say what to put in the trolley."""
+    print("\nwhat to actually buy")
+    from mealplan import service
+
+    note = service.buy_note("500g shredded Colby cheese")
+    check("a line priced from a block says to buy the block",
+          "Colby" in (note.get("product") or ""), str(note))
+    check("...and why", "grate" in (note.get("note") or "").lower(), str(note))
+
+    check("a line priced from the thing itself says nothing",
+          not service.buy_note("500g beef mince"),
+          "a note on every line is a note nobody reads")
+    check("a heading gets no note", not service.buy_note("SAUCE:"))
+    check("an unknown ingredient gets no note",
+          not service.buy_note("2 tbsp powdered unobtainium"))

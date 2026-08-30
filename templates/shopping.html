@@ -57,6 +57,22 @@
                         title="No quantity here that could be scaled — check this one"
                       {% endif %}>{{ line.text }}</span>
               </label>
+              {#- What to actually put in the trolley, when it is not what the
+                  line says. This is the only screen read while standing in the
+                  shop, so a price worked out from a block of cheese or a
+                  bone-in thigh has to say so here or the plan was costed
+                  against a purchase nobody made. -#}
+              {% if line.buy %}
+                <span class="buy-note">
+                  buy {{ line.buy.product }}{% if line.buy.note %} &mdash;
+                  {{ line.buy.note }}{% endif %}
+                  {%- if line.buy['yield'] < 1 %}
+                    <span class="buy-yield">({{ (line.buy['yield'] * 100) | round | int }}%
+                    of it ends up in the pot, so buy about
+                    {{ (1 / line.buy['yield']) | round(1) }}&times; the weight)</span>
+                  {%- endif %}
+                </span>
+              {% endif %}
             </li>
           {% endif %}
         {% endfor %}

@@ -531,11 +531,35 @@ def shopping_list(plan: dict, people: int = 0) -> list[dict[str, Any]]:
             "unscaled": unscaled,
             "ingredients": [
                 {"text": ln.text, "scaled": ln.scaled, "original": ln.original,
-                 "heading": ln.text.rstrip().endswith(":")}
+                 "heading": ln.text.rstrip().endswith(":"),
+                 "buy": buy_note(ln.text)}
                 for ln in lines
             ],
         })
     return out
+
+
+def buy_note(text: str) -> dict[str, Any]:
+    """What to actually pick up for this line, when it is not what it says.
+
+    The shopping list is the one screen where this matters, because it is the
+    only one you read in the shop. A recipe asking for boneless thighs is a line
+    that says "buy bone-in and bone them out" if that is how the price was
+    worked out -- and if the list does not say so, the number on the plan page
+    was quietly costed against a purchase nobody made.
+    """
+    cat = catalogue()
+    if not cat.items:
+        return {}
+    line = pricing.parse_line(text)
+    if line.why_unpriced == "heading":
+        return {}
+    key = cat.match(line.item_raw or line.item) or cat.match(line.item)
+    pin = ((cat.items.get(key) or {}).get("grocer") or {}) if key else {}
+    if not pin.get("note") and float(pin.get("yield", 1) or 1) >= 1.0:
+        return {}
+    return {"product": pin.get("name", ""), "note": pin.get("note", ""),
+            "yield": float(pin.get("yield", 1) or 1)}
 
 
 def preference_options(config: dict) -> dict[str, Any]:

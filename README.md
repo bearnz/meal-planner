@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 618 checks over scoring, planning, costing and the forecast
+python selftest.py       # 636 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -316,6 +316,39 @@ be marked for the file to work.
 Where one reaches the shopping list anyway — a plan made before the cut was
 marked — the line says so on the one page read in front of the cabinet.
 
+### Sides
+
+A side dish is never planned as a dinner. Roast potatoes, garlic rice, tzatziki
+and a tomato pasta sauce are all in the library and none of them is a meal, so
+they are taken out of the pool the plan is drawn from.
+
+Taken out, not thrown away, and that is the whole design. A side is not a
+rejected dinner — it is a dish with a job, wanted by name on the night something
+else is roasting. So they come back as a named list, folded under the week:
+
+> *7 side dishes — never planned as a dinner, here for when a main wants one*
+
+Two ways for something to be a side. The first is the library's own `Side` tag,
+via `not_a_meal_categories` — a veto, so one match settles it however many other
+facets the recipe carries. That catches most of them.
+
+The second is `side_overrides`, a map of recipe name to true or false in
+config.json, for when the tag is not there. It has to exist: Truly Crunchy Roast
+Potatoes is potatoes, oil, semolina and salt, tagged Potato, Roast, Oven and
+Vege, and `Vege` means both "vegetarian main" and "vegetables" in this library —
+so a tray of potatoes read as a vegetable main to every rule that could only see
+tags, and turned up as a Monday dinner. The tag it needed is the one nobody
+typed, and no rule written over the same tags could have known. A hand-written
+answer beats them, because it is later and better informed.
+
+It works both ways: `false` says a dish the library filed under `Side` is dinner
+in this house, without going back into Paprika to retag it. The page marks the
+hand-set ones **set by hand**, since it is the only place anybody will be
+reminded the override is there to undo.
+
+An aversion still applies to sides — a dish nobody will eat is not worth
+offering alongside the roast either.
+
 ### Scaling to the household
 
 `household_size` — also on the preferences page — scales every recipe on the
@@ -595,7 +628,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 618 checks, all passing
+python selftest.py                        # 636 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole
@@ -641,7 +674,16 @@ worth remembering: the synthetic library is clean, and a real one is not.
   files a recipe under everything it is *like* (cuisine, protein, method, vibe)
   rather than what it *is*, so the old subset test never fired and the planner
   served Pizza Dough and Tzatziki Sauce as dinners. See `is_dinner` for the
-  three settings and why a veto is needed alongside the subset rule.
+  four settings and why a veto is needed alongside the subset rule.
+- **A tray of potatoes was served as a Monday dinner.** The veto reads the
+  library's `Side` tag and that is right, but the tag is only there when
+  somebody typed it: Truly Crunchy Roast Potatoes — potatoes, oil, semolina,
+  salt — is tagged Potato, Roast, Oven and *Vege*, and `Vege` doubles as both
+  "vegetarian main" and "vegetables", which rescued it from every rule there
+  was. No cleverer rule written over those same tags was going to say
+  otherwise, so there is a hand-written answer instead: `side_overrides` in
+  config.json, keyed by name like `heartiness_overrides` beside it, and
+  working in both directions. See "Sides" below.
 - **The library already knew what this file spends 400 lines inferring.** Its
   `Vibe` tree — Easy, Effort, Heavy, Light — is the owner stating both scoring
   axes by hand, and `difficulty` is empty on all 99 recipes. Those tags now

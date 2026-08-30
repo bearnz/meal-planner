@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 from . import (paprika, preferences, pricesrc, pricing, quantity, seasons,
                store, weather)
-from .planner import Slot, build_plan, classify, is_eligible
+from .planner import Slot, build_plan, classify, is_eligible, is_side
 from .scoring import Scored, score
 from .weather import DayWeather, describe, wanted_heartiness
 
@@ -79,23 +79,40 @@ def load_library(config: dict, month: int | None = None) -> list[Scored]:
 
 
 def eligible_and_held(config: dict, month: int | None = None
-                      ) -> tuple[list[Scored], list[dict[str, Any]]]:
-    """The library, and what was held back for want of an ingredient.
+                      ) -> tuple[list[Scored], list[dict[str, Any]],
+                                 list[dict[str, Any]]]:
+    """The library, what was held back, and what is a side dish.
 
-    Held back rather than filtered, and the difference is the whole reason this
-    returns two lists. Beef cheeks and picanha are not things the household will
-    not eat -- they are things the butcher does not always have -- so a recipe
-    that needs one is out this week and back the week the cut returns. Saying
-    which is the point: a library that quietly shrinks by four recipes looks
-    like a bug, and "beef cheeks are not in the shops right now" is a sentence
-    somebody can act on, by marking the cut available again when they see it.
+    Three lists out of one scoring pass, because a recipe leaves the pool for
+    three different reasons and only one of them is "no".
+
+    Held back is temporary. Beef cheeks and picanha are not things the
+    household will not eat -- they are things the butcher does not always have
+    -- so a recipe that needs one is out this week and back the week the cut
+    returns. Saying which is the point: a library that quietly shrinks by four
+    recipes looks like a bug, and "beef cheeks are not in the shops right now"
+    is a sentence somebody can act on, by marking the cut available again when
+    they see it.
+
+    A side is permanent and is not a rejection at all. Roast potatoes are not a
+    dinner and are also not a mistake in the library: they are what you want on
+    the night something else is roasting. So they come back named rather than
+    dropped, and the page can offer them when a main asks for one.
     """
     scored = score_all(config, month)
-    eligible = [s for s in scored if is_eligible(s, config)]
 
     cat = catalogue()
-    library, held = [], []
-    for s in eligible:
+    library, held, sides = [], [], []
+    for s in scored:
+        # The aversion is checked first and applies to sides as well: a dish
+        # nobody will eat is not worth offering alongside the roast either.
+        if s.excluded_by:
+            continue
+        if is_side(s, config):
+            sides.append(_side_payload(s, config))
+            continue
+        if not is_eligible(s, config):
+            continue
         missing = cat.unavailable_in(s.recipe.ingredients)
         if missing:
             held.append({"name": s.name, "uid": s.uid, "needs": missing})
@@ -107,7 +124,23 @@ def eligible_and_held(config: dict, month: int | None = None
             "Every recipe was filtered out. Check the ingredient aversions on "
             "the preferences page, and exclude_categories in config.json."
         )
-    return library, held
+    return library, held, sorted(sides, key=lambda d: d["name"].lower())
+
+
+def _side_payload(s: Scored, config: dict) -> dict[str, Any]:
+    """A side, as the page needs it: what it is, and who said so.
+
+    `by_hand` is the whole reason this is a dict and not a name. A side that
+    the library tagged Side needs no explaining; one that is only a side
+    because config.json says so is a decision somebody made, and the page that
+    shows it is the one place they will ever be reminded it is there to undo.
+    """
+    return {
+        "name": s.name,
+        "uid": s.uid,
+        "url": s.recipe.source_url or "",
+        "by_hand": s.name in (config.get("side_overrides") or {}),
+    }
 
 
 # --- weather -----------------------------------------------------------------
@@ -346,7 +379,7 @@ def generate(config: dict, seed: int | None = None,
     # The month of the week being planned, not of the machine's today: a plan
     # generated on the 30th runs into the next month, and seasonality is the one
     # score where that boundary means something.
-    library, held_back = eligible_and_held(config, month=start.month)
+    library, held_back, sides = eligible_and_held(config, month=start.month)
 
     # Carry the current week's office days over a re-plan. Editing them is a
     # deliberate act on the page; re-planning is not, and silently resetting
@@ -368,6 +401,7 @@ def generate(config: dict, seed: int | None = None,
         "office_days": sorted(office_days),
         "library_size": len(library),
         "held_back": held_back,
+        "sides": sides,
         "money": None,
         "days": [_day_payload(c, c.slot.day in horizon,
                               int(config.get("household_size", 0) or 0),
@@ -391,7 +425,7 @@ def reroll(config: dict, iso_day: str) -> dict:
     horizon = {w.day for w in forecast}
 
     start = date.fromisoformat(plan["days"][0]["date"])
-    library, held_back = eligible_and_held(config, month=start.month)
+    library, held_back, sides = eligible_and_held(config, month=start.month)
     office_days = plan.get("office_days") or default_office_days(config, start)
     slots = week_slots(forecast, start=start, office_days=set(office_days))
     recent = store.recent_uids(int(config.get("repeat_memory_weeks", 4)), start)
@@ -413,6 +447,7 @@ def reroll(config: dict, iso_day: str) -> dict:
         "office_days": sorted(office_days),
         "library_size": len(library),
         "held_back": held_back,
+        "sides": sides,
         "money": None,
         "days": [_day_payload(c, c.slot.day in horizon,
                               int(config.get("household_size", 0) or 0),

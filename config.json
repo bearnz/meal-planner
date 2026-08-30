@@ -50,6 +50,9 @@
   "not_a_meal_categories": [
     "Side"
   ],
+  "side_overrides": {
+    "Truly Crunchy Roast Potatoes": true
+  },
   "component_categories": [
     "Bread",
     "Pastry",

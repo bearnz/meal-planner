@@ -348,5 +348,31 @@
   <p class="note">No plan yet. Sync your recipes, then re-plan the week.</p>
 {% endif %}
 
+{#- Sides are the one thing kept out of the week that is not a rejection, so
+    this is not a list of what was filtered -- it is the shelf you reach for on
+    the night the lamb needs potatoes. It is also the only place anyone will be
+    reminded that a hand-set side is hand-set, and so the only place they will
+    think to undo one. -#}
+{% if plan and plan.sides %}
+  <details class="sides">
+    <summary>
+      {{ plan.sides | length }} side dish{{ '' if plan.sides | length == 1 else 'es' }}
+      &mdash; never planned as a dinner, here for when a main wants one
+    </summary>
+    <ul>
+      {% for s in plan.sides %}
+        <li>
+          {% if s.url %}
+            <a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.name }}</a>
+          {% else %}{{ s.name }}{% endif %}
+          {% if s.by_hand %}
+            <span class="tiny" title="Not tagged Side in the library — set by hand in config.json under side_overrides">set by hand</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </details>
+{% endif %}
+
 </body>
 </html>

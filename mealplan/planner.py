@@ -463,6 +463,34 @@ def _lower(values) -> set[str]:
     return {str(v).strip().lower() for v in (values or []) if str(v).strip()}
 
 
+def is_side(s: Scored, config: dict) -> bool:
+    """A dish that goes *next* to dinner rather than being it.
+
+    Two ways to know, and the second one is why this is a function rather than
+    a set test. The library's own tags are the primary signal:
+    `not_a_meal_categories` is a veto, one match and it is a side however many
+    other facets it carries, which is the whole rule in a faceted library --
+    a side is a side no matter how good it is.
+
+    `side_overrides` is the escape hatch, keyed by recipe name like the
+    `heartiness_overrides` beside it in config.json. It exists because a tray
+    of roast potatoes tagged Potato, Roast, Oven and Vege reads as a vegetable
+    main to any rule that can only see tags, and no cleverer rule written over
+    those same tags is going to say otherwise: the tag it needed is the one
+    nobody typed. It is somebody else's library and it is allowed to be
+    incomplete.
+
+    It works in both directions. `false` is how you say that a dish the library
+    filed under Side is dinner in this house, without going back into Paprika
+    to retag it -- and it beats the tags, because a hand-written answer is a
+    later and better-informed one than the tag it is arguing with.
+    """
+    override = (config.get("side_overrides") or {}).get(s.name)
+    if override is not None:
+        return bool(override)
+    return bool(_lower(s.category_names) & _lower(config.get("not_a_meal_categories")))
+
+
 def is_dinner(s: Scored, config: dict) -> bool:
     """Filter out anything that is plainly not a dinner.
 
@@ -472,7 +500,7 @@ def is_dinner(s: Scored, config: dict) -> bool:
     empty it.
 
     There are two shapes of library and they need different rules, which is why
-    there are three settings rather than one.
+    there are four settings rather than one.
 
     A **meal-type** library files a recipe under what it *is*: Dinner, Dessert,
     Breakfast. There `exclude_categories` and its subset test are right -- drop
@@ -484,9 +512,10 @@ def is_dinner(s: Scored, config: dict) -> bool:
     almost nothing is tagged exclusively with the facets you want rid of -- a
     tzatziki tagged Greek/Sauce/Side/Vege is not a subset of anything sane. So:
 
-      `not_a_meal_categories` is a **veto**. One match and it is not dinner,
-      however many other facets it carries. "Side" is the whole rule in a
-      faceted library: a side is a side no matter how good it is.
+      `not_a_meal_categories` and `side_overrides` are a **veto**, and they
+      live in `is_side` above because what they answer is a question worth
+      asking on its own: a side is not a failed dinner, it is a dish with a
+      job, and it is wanted by name on the night a roast needs potatoes.
 
       `component_categories` are facets that are only a meal with something in
       them -- Bread, Pastry, Baking. A pizza dough and a smash cheeseburger are
@@ -494,14 +523,15 @@ def is_dinner(s: Scored, config: dict) -> bool:
       protein. So a component is dinner only if it also carries one of
       `main_ingredient_categories`.
 
-    All three default to off, so a library that needs none of this is untouched.
+    All of them default to off, so a library that needs none of this is
+    untouched.
     """
+    if is_side(s, config):
+        return False
+
     names = _lower(s.category_names)
     if not names:
         return True
-
-    if names & _lower(config.get("not_a_meal_categories")):
-        return False
 
     components = _lower(config.get("component_categories"))
     if components and (names & components):

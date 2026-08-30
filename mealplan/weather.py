@@ -9,6 +9,7 @@ weather for somewhere else.
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -119,8 +120,35 @@ def geocode(place: str) -> tuple[float, float, str]:
     return float(top["latitude"]), float(top["longitude"]), pretty
 
 
-def forecast(lat: float, lon: float, days: int = 7) -> list[DayWeather]:
-    """Daily forecast starting today, in the location's own timezone."""
+# A daily forecast does not change between two clicks, and every button on the
+# plan page re-plans -- so an uncached forecast put a live HTTPS round trip,
+# most of it a fresh TLS handshake, in front of every re-roll and every office
+# toggle. In process rather than on disk on purpose: it is a plain speed cache
+# with nothing to invalidate, and restarting the app is a guaranteed way to get
+# a real answer.
+CACHE_SECONDS = 900
+_CACHE: dict[tuple[float, float, int], tuple[float, list["DayWeather"]]] = {}
+
+
+def forecast(lat: float, lon: float, days: int = 7,
+             max_age: float = CACHE_SECONDS) -> list[DayWeather]:
+    """Daily forecast starting today, in the location's own timezone.
+
+    Pass max_age=0 to insist on a live call -- which is what the one deliberate
+    network check in the test suite does, since a cache hit there would report
+    that Open-Meteo is reachable without having asked it.
+    """
+    key = (round(lat, 3), round(lon, 3), days)
+    hit = _CACHE.get(key)
+    if hit and max_age > 0 and time.monotonic() - hit[0] < max_age:
+        # A copy, so a caller sorting or trimming the week cannot edit the cache.
+        return list(hit[1])
+    out = _fetch(lat, lon, days)
+    _CACHE[key] = (time.monotonic(), out)
+    return list(out)
+
+
+def _fetch(lat: float, lon: float, days: int = 7) -> list[DayWeather]:
     r = requests.get(
         FORECAST_URL,
         params={

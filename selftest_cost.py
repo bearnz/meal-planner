@@ -297,7 +297,9 @@ def run_sources(check):
 
     # Writing back, on a copy so the shipped file is untouched by the tests.
     data = copy.deepcopy(store.load_prices())
-    before = pricesrc.freshness(data)
+    # Per-store now: the file carries a price per chain and only one of
+    # them is ever shopped at. Ask about the one being written to.
+    before = pricesrc.freshness(data, "PAK'nSAVE")
     # A value deliberately unlike anything that could already be in the file:
     # the first cut asserted against a fixed price, and a real --price run on
     # that same item made the test fail for the one reason it should not care
@@ -324,7 +326,7 @@ def run_sources(check):
     check("a verified price drops the invented special beside it",
           "special" not in entry, str(entry))
 
-    after = pricesrc.freshness(data)
+    after = pricesrc.freshness(data, "PAK'nSAVE")
     check("freshness goes up when a price is checked",
           after["checked"] >= before["checked"] + 1,
           f"{before['checked']} -> {after['checked']}")
@@ -332,9 +334,14 @@ def run_sources(check):
     stale = pricesrc.stale_items(data)
     check("a just-checked price is not stale",
           not any(i == item and s == "PAK'nSAVE" for i, s, _ in stale))
+    # Like for like: freshness counts one store, so this counts that store's
+    # share of stale_items rather than every chain's.
+    here = [r for r in stale if r[1] == "PAK'nSAVE"]
     check("the shipped estimates are all reported unchecked",
-          len(stale) == after["total"] - after["checked"],
-          f"{len(stale)} vs {after['total'] - after['checked']}")
+          len(here) == after["total"] - after["checked"],
+          f"{len(here)} vs {after['total'] - after['checked']}")
+    check("...and the whole-file count is still available",
+          after["every"] >= after["total"], f"{after['every']} vs {after['total']}")
 
     applied = pricesrc.apply_receipt(data, lines, "PAK'nSAVE")
     check("applying a receipt writes only the resolved lines",

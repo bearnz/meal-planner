@@ -27,6 +27,7 @@ def run(check):
     _store_move_refetches(check)
     _verified(check)
     _live_money(check)
+    _freshness_is_about_your_shop(check)
 
 
 def _sizes(check):
@@ -388,3 +389,37 @@ def _live_money(check):
         for k, v in real.items():
             setattr(store, k, v)
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _freshness_is_about_your_shop(check):
+    """The progress bar has to be a number you can actually move."""
+    print("\nfreshness counts the shop you use")
+    from mealplan import pricesrc
+
+    data = {
+        "primary_store": "A",
+        "items": {
+            "one": {"prices": {"A": {"price": 1, "checked": "2026-08-30"},
+                               "B": {"price": 1}, "C": {"price": 1}}},
+            "two": {"prices": {"A": {"price": 1}, "B": {"price": 1}}},
+            "three": {"prices": {"B": {"price": 1}}},
+        },
+    }
+    f = pricesrc.freshness(data, "A")
+    check("only the chosen store is counted", f["total"] == 2, str(f["total"]))
+    check("...and its checked prices", f["checked"] == 1, str(f["checked"]))
+    check("...giving a share that can reach 1.0", f["share"] == 0.5, str(f["share"]))
+    check("the whole-file count is still reported", f["every"] == 6, str(f["every"]))
+    check("an item with no price at that store is absent, not unchecked",
+          f["absent"] == 1, str(f["absent"]))
+
+    # The bug: counting every chain gave a ceiling nothing could move past.
+    # Here 4 of 6 entries are at shops nobody will ever check, so the old
+    # denominator capped an entirely finished job at 33%.
+    check("counting all chains would cap a finished job well under 100%",
+          f["every"] == 6 and f["total"] == 2,
+          f"{f['every']} entries across chains, {f['total']} at the one shop: "
+          f"checking every price you could would have read as 33% done")
+
+    check("no store named falls back to the file's own primary",
+          pricesrc.freshness(data)["store"] == "A")

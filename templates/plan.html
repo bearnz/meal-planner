@@ -146,8 +146,9 @@
         </span>
         <strong>{{ (v * 100) | round | int }}% of this week's cost</strong>
         is from real prices
-        <span class="dim">&middot; {{ f.checked }} of {{ f.total }} prices in the
-        list have been checked</span>
+        <span class="dim">&middot; {{ f.checked }} of {{ f.total }} prices at
+        {{ f.store or 'your store' }} have been checked{% if f.absent %},
+        {{ f.absent }} more have no {{ f.store }} price at all{% endif %}</span>
       </p>
     {% endif %}
 

@@ -458,7 +458,7 @@ def money_summary(plan: dict, config: dict) -> dict[str, Any]:
             for s in savings
         ],
         "total_saving": round(sum(s.saved for s in savings), 2),
-        "freshness": pricesrc.freshness(cat.data),
+        "freshness": pricesrc.freshness(cat.data, primary),
         # Weighted by what each night costs, not averaged over nights: a cheap
         # night priced from receipts and an expensive one guessed do not each
         # contribute half of "how real is this number".

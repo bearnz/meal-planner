@@ -166,6 +166,12 @@ def _short_name(line: "Line") -> str:
     return text
 
 
+# Public name for the same thing: the shopping list needs to show an
+# ingredient it could not price, and "a few words naming what this line is"
+# is exactly that question asked from outside this module.
+short_name = _short_name
+
+
 def _strip_prep(text: str) -> str:
     text = text.split(",")[0]
     text = _PREP_RE.sub("", text)

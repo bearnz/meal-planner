@@ -359,7 +359,50 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
   cursor: pointer; font-size: .8rem; color: var(--ink-soft);
   padding: .2rem 0; list-style: none;
 }
-.pantry > summary::before { content: "B8 "; opacity: .7; }
-.pantry[open] > summary::before { content: "BE "; }
+.pantry > summary::before { content: "\25B8  "; opacity: .7; }
+.pantry[open] > summary::before { content: "\25BE  "; }
 .pantry > summary:hover { color: var(--ink); }
 .pantry ul { margin-top: .3rem; opacity: .85; }
+
+/* --- by-night / by-item toggle ---------------------------------------------
+   Two links styled as one control. A segmented control rather than a checkbox
+   because the two views are alternatives, not a setting that is on or off. */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px;
+       overflow: hidden; }
+.seg a {
+  padding: 0.42rem 0.75rem; font-size: 0.8rem; text-decoration: none;
+  color: var(--ink-soft); background: var(--card);
+}
+.seg a + a { border-left: 1px solid var(--line); }
+.seg a:hover { color: var(--ink); }
+.seg a.on { background: var(--accent-soft); color: var(--ink); font-weight: 600; }
+
+/* The merged list is one long column, not a grid of cards -- it is read top to
+   bottom while walking, and reflowing it into columns is how you shop for the
+   same aisle twice. */
+.shop.one { grid-template-columns: minmax(0, 640px); }
+.shop.one li { padding: 0.3rem 0; border-bottom: 1px solid var(--line); }
+.shop.one li:last-child { border-bottom: none; }
+
+/* Where a merged number came from. Folded away by default: it is the working,
+   not the answer, and it is shown outright only when there was no answer. */
+.parts { display: none; margin-left: 1.6rem; }
+.parts.shown { display: block; }
+.part { display: block; font-size: 0.74rem; color: var(--ink-soft); }
+.part b { font-weight: 600; opacity: 0.75; }
+li:hover > .parts { display: block; }
+
+/* A staple that goes off. On the list, because it runs out -- but marked, so
+   the eye can skip the ones already in the fridge. Quiet on purpose: this is a
+   hint about a line, not a warning about one. */
+.perish > label > span::after {
+  content: " \25CF"; color: var(--effort); font-size: 0.62em;
+  vertical-align: 0.25em; opacity: 0.85;
+}
+.perish-key::after {
+  content: "\25CF"; color: var(--effort); font-size: 0.8em;
+}
+/* Deliberately not a flex row: the key is a bare glyph that has to sit against
+   the sentence explaining it, and a flex item puts it on a line of its own. */
+.shop-foot { margin-top: 1.2rem; max-width: 640px; line-height: 1.5; }
+.shop-foot button { margin-left: 0.5rem; vertical-align: baseline; }

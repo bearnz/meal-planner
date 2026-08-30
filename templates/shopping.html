@@ -6,17 +6,29 @@
   <title>Shopping list</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body data-plan="{{ plan.generated or '' }}">
 
 <header class="bar">
   <div>
     <h1>Shopping list</h1>
     <p class="sub">
       {% if people %}Scaled for {{ people }}.{% endif %}
-      Grouped by night &mdash; quantities are not merged across recipes.
+      {% if by == 'item' %}
+        One entry per ingredient, added up across the week.
+      {% else %}
+        Grouped by night &mdash; quantities are not merged across recipes.
+      {% endif %}
     </p>
   </div>
   <div class="actions">
+    {#- Two links rather than a form, so the view can be bookmarked and the back
+        button does the obvious thing. -#}
+    <span class="seg">
+      <a class="{% if by != 'item' %}on{% endif %}"
+         href="{{ url_for('shopping') }}">By night</a>
+      <a class="{% if by == 'item' %}on{% endif %}"
+         href="{{ url_for('shopping', by='item') }}">By item</a>
+    </span>
     <a class="ghost button" href="{{ url_for('prefs') }}">Preferences</a>
     <a class="ghost button" href="{{ url_for('index') }}">Back to the week</a>
   </div>
@@ -26,7 +38,81 @@
   <div class="error"><strong>Heads up.</strong><p>{{ error }}</p></div>
 {% endif %}
 
-{% if groups %}
+{#- One macro for a checkable line, because the two views differ in what they
+    group by and not at all in what a line is. `tick` is what the tick is
+    remembered under; it has to name the thing being ticked rather than its
+    position, or inserting a recipe above it moves everyone's ticks down one. -#}
+{% macro line_body(text, buy, tick, staple=False, unscaled=False) -%}
+  <label>
+    <input type="checkbox" data-tick="{{ tick }}"{% if staple %} data-staple="1"{% endif %}>
+    <span class="{% if unscaled %}unscaled{% endif %}"
+          {% if unscaled %}title="No quantity here that could be scaled — check this one"{% endif %}
+      >{{ text }}</span>
+  </label>
+  {#- What to actually put in the trolley, when it is not what the line says.
+      This is the only screen read while standing in the shop, so a price worked
+      out from a block of cheese or a bone-in thigh has to say so here or the
+      plan was costed against a purchase nobody made. -#}
+  {% if buy %}
+    <span class="buy-note">
+      buy {{ buy.product }}{% if buy.note %} &mdash; {{ buy.note }}{% endif %}
+      {%- if buy['yield'] < 1 %}
+        <span class="buy-yield">({{ (buy['yield'] * 100) | round | int }}%
+        of it ends up in the pot, so buy about
+        {{ (1 / buy['yield']) | round(1) }}&times; the weight)</span>
+      {%- endif %}
+    </span>
+  {% endif %}
+{%- endmacro %}
+
+{% if by == 'item' and merged %}
+  {#- ---------------------------------------------------------------- by item -#}
+  <div class="shop one">
+    <section class="shop-day">
+      <h2>Everything, once</h2>
+      <p class="shop-recipe">
+        {{ merged.ingredients | length }} thing{{ '' if merged.ingredients | length == 1 else 's' }}
+        to buy. Ordered alphabetically for now &mdash; shelf order comes later.
+      </p>
+      <ul>
+        {% for e in merged.ingredients %}
+          <li class="{% if e.kind == 'perishable' %}perish{% endif %}">
+            {{ line_body((e.qty ~ ' ' ~ e.name) | trim,
+                 e.buy, 'item:' ~ e.key, e.kind == 'perishable') }}
+            {#- The working. A single merged number with nothing behind it is not
+                checkable while you are holding the bag, and when the amounts
+                could not be added this is the whole answer rather than a note. -#}
+            <span class="parts{% if not e.amount %} shown{% endif %}">
+              {%- for p in e.parts %}
+                <span class="part"><b>{{ p.day_name[:3] }}</b> {{ p.text }}</span>
+              {%- endfor %}
+            </span>
+            {% if not e.amount and e.parts | length > 1 %}
+              <span class="note tiny">not added up &mdash; the lines are not in
+                the same units</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if merged.pantry %}
+        <details class="pantry">
+          <summary>{{ merged.pantry | length }} from the pantry &mdash; check you
+            have these</summary>
+          <ul>
+            {% for e in merged.pantry %}
+              <li>{{ line_body(e.name ~ ' (' ~ e.nights ~ ' night' ~
+                     ('' if e.nights == 1 else 's') ~ ')',
+                     e.buy, 'item:' ~ e.key) }}</li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% endif %}
+    </section>
+  </div>
+
+{% elif groups %}
+  {#- --------------------------------------------------------------- by night -#}
   <div class="shop">
   {% for g in groups %}
     <section class="shop-day">
@@ -49,30 +135,11 @@
           {% if line.heading %}
             <li class="heading">{{ line.text }}</li>
           {% else %}
-            <li>
-              <label>
-                <input type="checkbox">
-                <span class="{% if not line.scaled and g.factor != 1.0 %}unscaled{% endif %}"
-                      {% if not line.scaled and g.factor != 1.0 %}
-                        title="No quantity here that could be scaled — check this one"
-                      {% endif %}>{{ line.text }}</span>
-              </label>
-              {#- What to actually put in the trolley, when it is not what the
-                  line says. This is the only screen read while standing in the
-                  shop, so a price worked out from a block of cheese or a
-                  bone-in thigh has to say so here or the plan was costed
-                  against a purchase nobody made. -#}
-              {% if line.buy %}
-                <span class="buy-note">
-                  buy {{ line.buy.product }}{% if line.buy.note %} &mdash;
-                  {{ line.buy.note }}{% endif %}
-                  {%- if line.buy['yield'] < 1 %}
-                    <span class="buy-yield">({{ (line.buy['yield'] * 100) | round | int }}%
-                    of it ends up in the pot, so buy about
-                    {{ (1 / line.buy['yield']) | round(1) }}&times; the weight)</span>
-                  {%- endif %}
-                </span>
-              {% endif %}
+            <li class="{% if line.kind == 'perishable' %}perish{% endif %}">
+              {{ line_body(line.text, line.buy,
+                           g.day_name ~ ':' ~ line.text,
+                           line.kind == 'perishable',
+                           not line.scaled and g.factor != 1.0) }}
             </li>
           {% endif %}
         {% endfor %}
@@ -82,20 +149,18 @@
           sauce and rice are not weekly purchases and listing them every week is
           how a list stops being read -- but they do run out, and a recipe
           wanting three tablespoons of a bottle you do not have is a failed
-          dinner. So: folded away, one glance to check. -#}
+          dinner. So: folded away, one glance to check. Perishable staples are
+          deliberately not in here: butter and coriander are owned in the same
+          sense and are still gone by Thursday, so they stay on the list proper
+          where they can be ticked off rather than folded away and forgotten. -#}
       {% if g.pantry %}
         <details class="pantry">
           <summary>{{ g.pantry | length }} from the pantry &mdash; check you have
             these</summary>
           <ul>
             {% for line in g.pantry %}
-              <li>
-                <label><input type="checkbox"><span>{{ line.text }}</span></label>
-                {% if line.buy %}
-                  <span class="buy-note">buy {{ line.buy.product }}{% if line.buy.note %}
-                    &mdash; {{ line.buy.note }}{% endif %}</span>
-                {% endif %}
-              </li>
+              <li>{{ line_body(line.text, line.buy,
+                               g.day_name ~ ':' ~ line.text) }}</li>
             {% endfor %}
           </ul>
         </details>
@@ -114,5 +179,13 @@
   <p class="note">Nothing to shop for &mdash; there is no plan yet.</p>
 {% endif %}
 
+<p class="note tiny shop-foot">
+  <span class="perish-key"></span> marks a fridge staple &mdash; on the list
+  because butter and coriander run out, so tick it off if you already have it.
+  Ticks are remembered on this device until the plan is regenerated.
+  <button type="button" class="ghost small" id="untick">Clear ticks</button>
+</p>
+
+<script src="{{ url_for('static', filename='shop.js') }}"></script>
 </body>
 </html>

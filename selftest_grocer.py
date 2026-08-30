@@ -32,7 +32,10 @@ def run(check):
     _buy_note(check)
     _cli_is_wired(check)
     _pantry(check)
+    _perishable_staples(check)
     _shopping_split(check)
+    _by_item(check)
+    _shopping_page(check)
 
 
 def _sizes(check):
@@ -560,12 +563,12 @@ import pathlib  # noqa: E402 - used by the check above
 def _pantry(check):
     """Cupboard items stay off the shopping list proper."""
     print("\npantry staples")
-    from mealplan import service, store as _store
+    from mealplan import service
 
     for text in ["2 tbsp oyster sauce", "1 cup jasmine rice", "1 tsp star anise",
                  "2 tsp fennel seeds", "1/2 tsp tumeric", "1 tbsp cornflour",
                  "2 tbsp mirin", "1 tbsp worcestershire sauce",
-                 "1 tsp baking soda", "3 tbsp soy sauce", "2 garlic cloves",
+                 "1 tsp baking soda", "3 tbsp soy sauce",
                  "1/4 tsp dried oregano", "1 tbsp olive oil"]:
         check(f"{text!r} is a cupboard item", service.is_pantry(text))
 
@@ -599,6 +602,67 @@ def _pantry(check):
                         "dried oregano", "sesame seeds"]))
 
 
+def _perishable_staples(check):
+    """A staple that goes off is shown, not folded into the cupboard."""
+    print("\nperishable staples stay on the list")
+    from mealplan import service
+
+    # Owned in the same sense as oyster sauce, and gone by Thursday. Hiding
+    # these in the cupboard block is what made the list wrong rather than
+    # merely long -- nobody has a fortnight-old bunch of coriander.
+    for text in ["2 garlic cloves", "1 tbsp butter", "1 tsp grated ginger",
+                 "1 red chilli", "2 tbsp chopped parsley"]:
+        check(f"{text!r} is a fridge staple, not a cupboard one",
+              service.is_perishable(text), _kind(service, text))
+        check(f"...so {text!r} is not folded away", not service.is_pantry(text))
+
+    # The two are alternatives, not a hierarchy: nothing may be both, or the
+    # line is drawn twice and bought twice.
+    cat = service.catalogue()
+    perish = [k for k, v in cat.items.items() if v.get("perishable")]
+    check("something is marked perishable", bool(perish), str(perish))
+    check("every perishable is also a staple",
+          all((cat.items[k] or {}).get("staple") for k in perish),
+          "perishable is a split within staple, not a third kind of item")
+    check("every perishable has an allowance",
+          all(float(cat.items[k].get("free_allowance") or 0) > 0 for k in perish))
+
+    # ...and the allowance still decides. A stick of butter is shopping.
+    check("a perishable bought in bulk is a purchase like any other",
+          _kind(service, "250g butter") == "",
+          _kind(service, "250g butter"))
+    check("...while a knob of it is not", _kind(service, "1 tbsp butter")
+          == "perishable")
+
+    # Dried is not fresh, and putting perishables on the list is what made that
+    # visible: three lines of dried chillies had always matched the fresh entry
+    # and nobody saw it while they were folded into the cupboard block.
+    for text in ["2.3 g guajillo chillies, dried (~4 pieces)",
+                 "1/4 cup dried Chinese chillis , whole",
+                 "2 tsp chilli flakes"]:
+        check(f"{text[:34]!r} is a cupboard chilli",
+              _kind(service, text) == "pantry", _kind(service, text))
+    check("a fresh chilli still is not",
+          _kind(service, "1 red chilli, finely sliced") == "perishable")
+    check("water you made yourself is not shopping",
+          _kind(service, "1/4 cup chilli soaking water (reserve)") == "pantry",
+          "soaking liquid is a step in the recipe, not a line on the list")
+
+    # The shopping list must show them where they will be read.
+    from mealplan import store as _store
+    groups = service.shopping_list(_store.load_plan(), 2)
+    shown = [x for g in groups for x in g["ingredients"] if x["kind"] == "perishable"]
+    hidden = [x for g in groups for x in g["pantry"] if x["kind"] == "perishable"]
+    check("perishables appear on the list proper", bool(shown),
+          "a week of dinners with no butter, garlic or herbs is suspicious")
+    check("...and never in the cupboard block", not hidden,
+          str([x["text"] for x in hidden]))
+
+
+def _kind(service, text):
+    return service._shape_line(text, True, text, service.catalogue())["kind"]
+
+
 def _shopping_split(check):
     print("\nthe shopping list splits pantry from purchases")
     from mealplan import service, store as _store
@@ -616,6 +680,114 @@ def _shopping_split(check):
           all(not ({i["text"] for i in g["ingredients"]}
                    & {i["text"] for i in g["pantry"]}) for g in groups))
     check("no line was lost in the split",
-          all(all(x["pantry"] is False for x in g["ingredients"]) for g in groups))
+          all(all(x["kind"] != "pantry" for x in g["ingredients"]) for g in groups))
     check("headings stay on the list proper, not in the cupboard",
           all(not any(i["heading"] for i in g["pantry"]) for g in groups))
+
+
+def _by_item(check):
+    """The merged view: one entry per ingredient, added up across the week."""
+    print("\nthe shopping list merged by item")
+    from mealplan import service, store as _store
+
+    plan = _store.load_plan()
+    nights = service.shopping_list(plan, 2)
+    merged = service.shopping_by_item(plan, 2)
+    check("the merged list has both halves",
+          "ingredients" in merged and "pantry" in merged)
+    items = merged["ingredients"] + merged["pantry"]
+    check("there is something in it", bool(items))
+    if not items:
+        return
+
+    # The whole point: fewer entries than lines, because the repeats collapsed.
+    lines = [x for g in nights for x in g["ingredients"] + g["pantry"]
+             if not x["heading"]]
+    check("merging shortens the list", len(items) < len(lines),
+          f"{len(items)} entries from {len(lines)} lines")
+    check("every entry knows which nights wanted it",
+          all(e["parts"] and e["nights"] >= 1 for e in items))
+    check("something actually merged", any(e["nights"] > 1 for e in items),
+          "seven dinners sharing no ingredient at all would be remarkable")
+
+    # Nothing may be dropped on the way in. A merged list that quietly loses a
+    # line is worse than no merged list, because it looks complete.
+    check("no line was lost in the merge",
+          sum(len(e["parts"]) for e in items) == len(lines),
+          f"{sum(len(e['parts']) for e in items)} parts from {len(lines)} lines")
+    check("headings are dropped rather than merged",
+          not any("SAUCE" in e["name"].upper() and e["name"].endswith(":")
+                  for e in items))
+    check("nothing is in both halves",
+          not ({e["key"] for e in merged["ingredients"]}
+               & {e["key"] for e in merged["pantry"]}))
+
+    # A total is only offered when every contributing line converted. One
+    # "handful of parsley" among three weighed ones makes the sum a lie.
+    totalled = [e for e in items if e["amount"] is not None]
+    check("some entries carry a total", bool(totalled))
+    check("a total always has a unit to be in",
+          all(e["unit"] for e in totalled),
+          str([e["name"] for e in totalled if not e["unit"]]))
+    check("a total is at least as big as any one night's share",
+          all(e["amount"] > 0 for e in totalled),
+          str([e["name"] for e in totalled if e["amount"] <= 0]))
+
+    # A count is rounded up, because a shop does not sell a fifth of a broccoli
+    # and the only direction of error that matters here sends you home without
+    # dinner. The unit word "each" is the catalogue's, and never printed.
+    label = service._quantity_label
+    check("a fraction of a countable thing rounds up to one",
+          label(0.2, "each") == "1", label(0.2, "each"))
+    check("...and 1.4 of them is two", label(1.4, "each") == "2")
+    check("...and a whole number is left alone", label(3.0, "each") == "3")
+    check("a weight is not rounded up, only tidied",
+          label(60.29, "g") == "60 g", label(60.29, "g"))
+    check("a small weight keeps a decimal", label(2.24, "g") == "2.2 g",
+          label(2.24, "g"))
+    check("no amount means no label", label(None, "g") == "")
+    check("'each' is never printed", "each" not in
+          " ".join(e["qty"] for e in items))
+
+    # Merging is by catalogue key, so the alias table does the synonym work.
+    keys = [e["key"] for e in items]
+    check("entries are unique", len(keys) == len(set(keys)))
+    check("an unmatched ingredient is grouped under its own name only",
+          all(k.startswith("?") or k in service.catalogue().items for k in keys),
+          str([k for k in keys
+               if not k.startswith("?") and k not in service.catalogue().items]))
+    check("the list is ordered, not in dictionary insertion order",
+          [e["name"].lower() for e in merged["ingredients"]]
+          == sorted(e["name"].lower() for e in merged["ingredients"]),
+          "shelf order replaces this later; it still has to be *an* order")
+
+    # A staple is judged a night at a time, deliberately. Seven teaspoons of
+    # olive oil is not a bottle of olive oil to buy.
+    oil = [e for e in merged["pantry"] if e["key"] == "olive oil"]
+    if oil:
+        check("a staple used all week is still a cupboard item",
+              oil[0]["kind"] == "pantry",
+              "re-testing the weekly sum would put every staple back on the list")
+
+
+def _shopping_page(check):
+    """Both views render, and the ticks have something stable to hang on."""
+    print("\nthe shopping page")
+    from mealplan import web
+
+    client = web.app.test_client()
+    for query, want in [("", "By night"), ("?by=item", "By item")]:
+        r = client.get("/shopping" + query)
+        check(f"/shopping{query} loads", r.status_code == 200, str(r.status_code))
+        page = r.get_data(as_text=True)
+        check(f"...and offers the other view", 'class="seg"' in page)
+        check(f"...and every box has something to be remembered by",
+              page.count("data-tick=") == page.count('type="checkbox"'),
+              "a checkbox with no key is a tick that vanishes on the next reload")
+
+    page = client.get("/shopping?by=item").get_data(as_text=True)
+    check("the merged view is one column, not a grid of cards",
+          'class="shop one"' in page)
+    check("the tick store is scoped to a plan",
+          "data-plan=" in page,
+          "unscoped ticks show last week's shopping crossed off this week's")

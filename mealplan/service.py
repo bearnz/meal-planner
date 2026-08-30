@@ -75,14 +75,39 @@ def score_all(config: dict, month: int | None = None) -> list[Scored]:
 
 def load_library(config: dict, month: int | None = None) -> list[Scored]:
     """Scored recipes that are dinner and that the household will eat."""
+    return eligible_and_held(config, month)[0]
+
+
+def eligible_and_held(config: dict, month: int | None = None
+                      ) -> tuple[list[Scored], list[dict[str, Any]]]:
+    """The library, and what was held back for want of an ingredient.
+
+    Held back rather than filtered, and the difference is the whole reason this
+    returns two lists. Beef cheeks and picanha are not things the household will
+    not eat -- they are things the butcher does not always have -- so a recipe
+    that needs one is out this week and back the week the cut returns. Saying
+    which is the point: a library that quietly shrinks by four recipes looks
+    like a bug, and "beef cheeks are not in the shops right now" is a sentence
+    somebody can act on, by marking the cut available again when they see it.
+    """
     scored = score_all(config, month)
-    library = [s for s in scored if is_eligible(s, config)]
+    eligible = [s for s in scored if is_eligible(s, config)]
+
+    cat = catalogue()
+    library, held = [], []
+    for s in eligible:
+        missing = cat.unavailable_in(s.recipe.ingredients)
+        if missing:
+            held.append({"name": s.name, "uid": s.uid, "needs": missing})
+        else:
+            library.append(s)
+
     if not library:
         raise NoRecipes(
             "Every recipe was filtered out. Check the ingredient aversions on "
             "the preferences page, and exclude_categories in config.json."
         )
-    return library
+    return library, held
 
 
 # --- weather -----------------------------------------------------------------
@@ -321,7 +346,7 @@ def generate(config: dict, seed: int | None = None,
     # The month of the week being planned, not of the machine's today: a plan
     # generated on the 30th runs into the next month, and seasonality is the one
     # score where that boundary means something.
-    library = load_library(config, month=start.month)
+    library, held_back = eligible_and_held(config, month=start.month)
 
     # Carry the current week's office days over a re-plan. Editing them is a
     # deliberate act on the page; re-planning is not, and silently resetting
@@ -342,6 +367,7 @@ def generate(config: dict, seed: int | None = None,
         "household_size": int(config.get("household_size", 0) or 0),
         "office_days": sorted(office_days),
         "library_size": len(library),
+        "held_back": held_back,
         "money": None,
         "days": [_day_payload(c, c.slot.day in horizon,
                               int(config.get("household_size", 0) or 0),
@@ -365,7 +391,7 @@ def reroll(config: dict, iso_day: str) -> dict:
     horizon = {w.day for w in forecast}
 
     start = date.fromisoformat(plan["days"][0]["date"])
-    library = load_library(config, month=start.month)
+    library, held_back = eligible_and_held(config, month=start.month)
     office_days = plan.get("office_days") or default_office_days(config, start)
     slots = week_slots(forecast, start=start, office_days=set(office_days))
     recent = store.recent_uids(int(config.get("repeat_memory_weeks", 4)), start)
@@ -386,6 +412,7 @@ def reroll(config: dict, iso_day: str) -> dict:
         "household_size": int(config.get("household_size", 0) or 0),
         "office_days": sorted(office_days),
         "library_size": len(library),
+        "held_back": held_back,
         "money": None,
         "days": [_day_payload(c, c.slot.day in horizon,
                               int(config.get("household_size", 0) or 0),
@@ -821,10 +848,19 @@ def _staple_kind(spec: dict, amount: float | None) -> str:
 def _buy_from(spec: dict) -> dict[str, Any]:
     """What to actually pick up, when it is not what the line says."""
     pin = spec.get("grocer") or {}
-    if not pin.get("note") and float(pin.get("yield", 1) or 1) >= 1.0:
+    out = {"product": pin.get("name", ""), "note": pin.get("note", ""),
+           "yield": float(pin.get("yield", 1) or 1)}
+    # A cut the shop does not always carry belongs on the list louder than
+    # anywhere else: this is the page read while standing in front of the
+    # cabinet it is not in. Recipes needing one are normally held out of the
+    # plan entirely, so this is the case where one was pinned or planned before
+    # the cut was marked -- exactly when a person needs telling.
+    if spec.get("available") is False:
+        out["unavailable"] = True
+        return out
+    if not pin.get("note") and out["yield"] >= 1.0:
         return {}
-    return {"product": pin.get("name", ""), "note": pin.get("note", ""),
-            "yield": float(pin.get("yield", 1) or 1)}
+    return out
 
 
 def buy_note(text: str) -> dict[str, Any]:

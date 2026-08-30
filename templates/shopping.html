@@ -53,7 +53,10 @@
       This is the only screen read while standing in the shop, so a price worked
       out from a block of cheese or a bone-in thigh has to say so here or the
       plan was costed against a purchase nobody made. -#}
-  {% if buy %}
+  {% if buy and buy.unavailable %}
+    <span class="buy-note gone">not in the shops right now &mdash; this one needs
+      substituting or leaving out</span>
+  {% elif buy %}
     <span class="buy-note">
       buy {{ buy.product }}{% if buy.note %} &mdash; {{ buy.note }}{% endif %}
       {%- if buy['yield'] < 1 %}

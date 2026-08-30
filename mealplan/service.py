@@ -491,12 +491,76 @@ def preference_options(config: dict) -> dict[str, Any]:
     }
 
 
+PREF_KEYS = ("avoid_ingredients", "avoid_methods", "household_size")
+
+
+def _snapshot(config: dict) -> dict:
+    return {k: config.get(k) for k in PREF_KEYS}
+
+
 def save_preferences(config: dict, avoid_ingredients: list[str],
                      avoid_methods: list[str], people: int) -> dict:
+    """Save preferences, recording enough to reverse it and to report it.
+
+    An aversion removes recipes from the library outright, which is the right
+    behaviour and a dangerous one to apply silently: the only sign a save had
+    done anything was a count in the page header changing. A stray click during
+    testing excluded an ingredient and quietly took a recipe out of the week.
+    So every save now leaves a snapshot behind, and the page says what changed
+    and offers to put it back.
+    """
+    before = _snapshot(config)
+    before_size = len(load_library(config))
+
     config["avoid_ingredients"] = sorted({t.strip().lower()
                                           for t in avoid_ingredients if t.strip()})
     config["avoid_methods"] = [m for m in avoid_methods
                                if m in preferences.METHOD_GROUPS]
     config["household_size"] = max(1, min(int(people or 1), 50))
     store.save_config(config)
+
+    after = _snapshot(config)
+    if before == after:
+        # Nothing moved, so there is nothing to announce and nothing to undo.
+        # Offering "undo" for a no-op is how a banner stops being read.
+        store.clear_undo()
+        return config
+
+    try:
+        after_size = len(load_library(config))
+    except NoRecipes:
+        after_size = 0
+
+    old_av = set(before.get("avoid_ingredients") or [])
+    new_av = set(after.get("avoid_ingredients") or [])
+    old_me = set(before.get("avoid_methods") or [])
+    new_me = set(after.get("avoid_methods") or [])
+
+    store.save_undo({
+        "saved": datetime.now().isoformat(timespec="seconds"),
+        "before": before,
+        "library_before": before_size,
+        "library_after": after_size,
+        "added_ingredients": sorted(new_av - old_av),
+        "removed_ingredients": sorted(old_av - new_av),
+        "added_methods": sorted(new_me - old_me),
+        "removed_methods": sorted(old_me - new_me),
+        "people_before": before.get("household_size"),
+        "people_after": after.get("household_size"),
+    })
+    return config
+
+
+def undo_preferences(config: dict) -> dict:
+    """Put the last preferences change back, and re-plan."""
+    snap = store.load_undo()
+    before = snap.get("before")
+    if not before:
+        raise ValueError("There is nothing to undo.")
+    for key in PREF_KEYS:
+        if key in before:
+            config[key] = before[key]
+    store.save_config(config)
+    store.clear_undo()
+    generate(config)
     return config

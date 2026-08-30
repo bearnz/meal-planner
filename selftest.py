@@ -665,6 +665,9 @@ if __name__ == "__main__":
     test_small_library()
     test_live_weather()
 
+    import selftest_undo
+    selftest_undo.run(check)
+
     import selftest_cost
     selftest_cost.run(check)
 

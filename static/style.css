@@ -303,3 +303,21 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
   background: var(--line); border-radius: 3px; overflow: hidden;
 }
 .bar-fill { display: block; height: 100%; background: var(--effort); }
+
+/* --- preferences saved / undo ------------------------------------------------ */
+.undo {
+  display: flex; flex-wrap: wrap; gap: 0.75rem 1rem;
+  align-items: center; justify-content: space-between;
+  background: var(--card); border: 1px solid var(--effort);
+  border-radius: 9px; padding: 0.7rem 1rem; margin-bottom: 1.25rem;
+  font-size: 0.85rem; line-height: 1.5;
+}
+/* A save that shrank the library is the case this whole banner exists for, so
+   it does not look like the one that merely changed a number. Named "shrunk"
+   rather than "warn" because .warn already exists for the per-card seasonality
+   lines at 0.72rem -- reusing it would have quietly shrunk this banner's text
+   and turned it orange. */
+.undo.shrunk { border-color: var(--accent); background: var(--weekend); }
+.undo-text { flex: 1 1 20rem; }
+.undo-actions { display: flex; gap: 0.4rem; }
+.undo-actions form { margin: 0; }

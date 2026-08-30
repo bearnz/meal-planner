@@ -43,18 +43,20 @@
           "price": 18.99
         },
         "PAK'nSAVE": {
-          "per": 1000,
-          "price": 15.49,
-          "special": {
-            "price": 12.99,
-            "until": "2026-09-06",
-            "note": "500g packs"
-          }
+          "per": 1000.0,
+          "price": 18.99,
+          "checked": "2026-08-30"
         },
         "Woolworths": {
           "per": 1000,
           "price": 17.5
         }
+      },
+      "grocer": {
+        "id": 1643,
+        "name": "NZ Beef Mince",
+        "size": "",
+        "category": "Meat & Seafood > Beef"
       }
     },
     "beef shin": {
@@ -107,9 +109,16 @@
           "price": 22.99
         },
         "PAK'nSAVE": {
-          "per": 1000,
-          "price": 19.5
+          "per": 1000.0,
+          "price": 18.49,
+          "checked": "2026-08-30"
         }
+      },
+      "grocer": {
+        "id": 1654,
+        "name": "NZ Beef Brisket",
+        "size": "",
+        "category": "Meat & Seafood > Beef"
       }
     },
     "lamb shoulder": {
@@ -124,18 +133,20 @@
           "price": 21.99
         },
         "PAK'nSAVE": {
-          "per": 1000,
-          "price": 18.99,
-          "special": {
-            "price": 14.99,
-            "until": "2026-09-03",
-            "note": "bone-in"
-          }
+          "per": 1000.0,
+          "price": 17.99,
+          "checked": "2026-08-30"
         },
         "Woolworths": {
           "per": 1000,
           "price": 20.99
         }
+      },
+      "grocer": {
+        "id": 1712,
+        "name": "Lamb Shoulder Roast",
+        "size": "",
+        "category": "Meat & Seafood > Lamb"
       }
     },
     "pork belly": {
@@ -189,18 +200,20 @@
           "price": 2.3
         },
         "PAK'nSAVE": {
-          "per": 1,
-          "price": 1.85,
-          "special": {
-            "price": 1.4,
-            "until": "2026-09-05",
-            "note": "1kg trays"
-          }
+          "per": 1.0,
+          "price": 1.76,
+          "checked": "2026-08-30"
         },
         "Woolworths": {
           "per": 1,
           "price": 2.1
         }
+      },
+      "grocer": {
+        "id": 26818,
+        "name": "NZ Skinless Chicken Thigh Fillet",
+        "size": "",
+        "category": "Meat & Seafood > Chicken & Poultry"
       }
     },
     "chicken breast": {
@@ -215,13 +228,20 @@
           "price": 4.6
         },
         "PAK'nSAVE": {
-          "per": 1,
-          "price": 3.8
+          "per": 1.0,
+          "price": 2.52,
+          "checked": "2026-08-30"
         },
         "Woolworths": {
           "per": 1,
           "price": 4.3
         }
+      },
+      "grocer": {
+        "id": 26815,
+        "name": "Skinless Chicken Breast",
+        "size": "",
+        "category": "Meat & Seafood > Chicken & Poultry"
       }
     },
     "sausage": {
@@ -237,13 +257,20 @@
           "price": 1.6
         },
         "PAK'nSAVE": {
-          "per": 1,
-          "price": 1.2
+          "per": 1.0,
+          "price": 1.32,
+          "checked": "2026-08-30"
         },
         "Woolworths": {
           "per": 1,
           "price": 1.45
         }
+      },
+      "grocer": {
+        "id": 24513,
+        "name": "Pams Classic Pork Sausages",
+        "size": "6 x 75g",
+        "category": "Meat & Seafood > Sausages"
       }
     },
     "chorizo": {
@@ -398,13 +425,20 @@
           "price": 0.7
         },
         "PAK'nSAVE": {
-          "per": 1,
-          "price": 0.55
+          "per": 1.0,
+          "price": 0.34,
+          "checked": "2026-08-30"
         },
         "Woolworths": {
           "per": 1,
           "price": 0.65
         }
+      },
+      "grocer": {
+        "id": 30,
+        "name": "Fresh Vegetable Onions Brown (Approx. 7 Units per Kg)",
+        "size": "",
+        "category": "Fruit & Vegetables > Vegetables"
       }
     },
     "spring onion": {
@@ -933,13 +967,20 @@
           "price": 0.85
         },
         "PAK'nSAVE": {
-          "per": 1,
-          "price": 0.68
+          "per": 10.0,
+          "price": 7.99,
+          "checked": "2026-08-30"
         },
         "Woolworths": {
           "per": 1,
           "price": 0.8
         }
+      },
+      "grocer": {
+        "id": 5727,
+        "name": "Woodland Woodland Eggs Free Range Size 7 10 Pack",
+        "size": "10pk",
+        "category": "Chilled > Dairy & Eggs"
       }
     },
     "milk": {
@@ -950,9 +991,16 @@
           "price": 3.4
         },
         "PAK'nSAVE": {
-          "per": 1000,
-          "price": 2.99
+          "per": 2000.0,
+          "price": 5.22,
+          "checked": "2026-08-30"
         }
+      },
+      "grocer": {
+        "id": 5458,
+        "name": "Simply Milk Standard Milk",
+        "size": "2l",
+        "category": "Chilled > Dairy & Eggs"
       }
     },
     "cream": {
@@ -1874,7 +1922,7 @@
     "attribution": "Price data from grocer.nz, used for personal, non-commercial use.",
     "store_id": 222,
     "store": "PAK'nSAVE",
-    "fetched": "2026-08-30T09:56:15+00:00",
+    "fetched": "2026-08-30T10:08:40+00:00",
     "etag": "\"14f4c0b3605edad257cd155b732ea6b7\""
   }
 }

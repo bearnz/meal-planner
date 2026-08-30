@@ -131,24 +131,41 @@
     {% endif %}
 
     {% set f = m.freshness or {} %}
+    {% set v = m.verified or 0 %}
     {% if f.total %}
+      {#- The bar is the share of *this week's cost* that came from real prices,
+          not the share of the price file that has been checked. Those are very
+          different numbers -- the file has hundreds of ingredients this week
+          never touches, so the file-level share reads far worse than the plan
+          actually is, and it barely moves when you price the thing you are
+          actually cooking. The file count stays as context, second. -#}
       <p class="freshness">
         <span class="bar-track">
-          <span class="bar-fill" style="width: {{ (f.share * 100) | round | int }}%"></span>
+          <span class="bar-fill {% if v >= 0.66 %}good{% elif v >= 0.33 %}part{% endif %}"
+                style="width: {{ (v * 100) | round | int }}%"></span>
         </span>
-        {{ f.checked }} of {{ f.total }} prices verified
-        {%- if f.stale %} &middot; {{ f.stale }} gone stale{% endif %}
+        <strong>{{ (v * 100) | round | int }}% of this week's cost</strong>
+        is from real prices
+        <span class="dim">&middot; {{ f.checked }} of {{ f.total }} prices in the
+        list have been checked</span>
       </p>
     {% endif %}
 
-    {% if m.estimated and (f.share or 0) < 0.5 %}
+    {% if m.estimated and v < 0.5 %}
       <p class="money-warn">
-        &#9888; Most of the prices behind these numbers are
-        <strong>hand-written estimates</strong>, not real advertised prices, and
-        so are the specials. Fix one in a second at the checkout:
-        <code>python run.py --price "beef mince" 15.49 --per 1000</code>,
-        or read a whole shop in with
-        <code>python run.py --receipt receipt.txt --apply</code>.
+        &#9888; {% if v %}Under half{% else %}Almost none{% endif %} of what this
+        week costs comes from a real price &mdash; the rest are
+        <strong>hand-written estimates</strong>, and so are the specials.
+        {% if m.source %}
+          Price the ingredients that matter most with
+          <code>python run.py --missing</code>, then
+          <code>--grocer-find</code> and <code>--grocer-pin</code> them.
+        {% else %}
+          Fix one in a second at the checkout:
+          <code>python run.py --price "beef mince" 15.49 --per 1000</code>,
+          or read a whole shop in with
+          <code>python run.py --receipt receipt.txt --apply</code>.
+        {% endif %}
       </p>
     {% endif %}
     {% if m.source %}
@@ -263,6 +280,15 @@
               title="{% if d.cost.confident %}Estimated from prices.json{% else %}Only {{ (d.cost.coverage * 100) | round | int }}% of ingredients could be priced{% endif %}">
           ${{ '%.2f' | format(d.cost.per_portion) }}<span class="per">/portion</span>
           {%- if not d.cost.confident %} <span class="rough-mark">approx</span>{% endif %}
+          {#- Two separate doubts, so two separate marks. `approx` above means
+              part of the recipe has no price at all; this one means the prices
+              it did use were invented. A night can be fully covered and wholly
+              guessed, and one mark cannot say both. -#}
+          {%- if (d.cost.verified or 0) >= 0.66 %}
+            <span class="real-mark" title="Most of this is priced from real shelf prices">real</span>
+          {%- elif (d.cost.verified or 0) < 0.2 %}
+            <span class="guess-mark" title="Almost all of this is priced from shipped estimates, not real prices">guess</span>
+          {%- endif %}
         </span>
       {% elif d.cost and d.cost.unpriced %}
         {# Deliberately no figure. See RecipeCost.usable: a number built from a

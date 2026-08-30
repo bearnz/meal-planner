@@ -206,6 +206,11 @@ def cost_of(recipe_json: dict, servings: int, store_name: str = "") -> dict:
         "coverage": round(c.coverage, 2),
         "confident": c.confident,
         "usable": c.usable,
+        # Two different doubts, kept apart on purpose. `coverage` is how much of
+        # the recipe got a price at all; `verified` is how much of that price
+        # was real rather than a shipped guess. A night can be fully covered and
+        # entirely invented, and the page has to be able to say so.
+        "verified": round(c.verified_share, 2),
         # Named, so a night with no figure can say what is missing rather than
         # only that something is. "the beef" is actionable; "3 ingredients" is
         # a shrug.
@@ -405,6 +410,17 @@ def money_summary(plan: dict, config: dict) -> dict[str, Any]:
     ingredients = [by_uid[d["uid"]].get("ingredients", "")
                    for d in plan["days"] if d.get("uid") in by_uid]
 
+    # Re-costed here rather than read off the saved day, and the plan's own days
+    # are updated in place so the cards and the week's total cannot disagree.
+    # A saved cost is a photograph of prices.json at plan time: refresh prices
+    # and every night still showed the old figure, with the header confidently
+    # reporting how little had been verified. Same bug as the money block above
+    # it, one level down, and the cheapest fix is to stop storing the answer.
+    for d in plan["days"]:
+        r = by_uid.get(d.get("uid"))
+        if r:
+            d["cost"] = cost_of(r, 0, primary)
+
     costs = [d.get("cost") or {} for d in plan["days"]]
     # Only days with a number worth showing feed the week's figures. A day we
     # could price a third of is not a cheap day, and averaging it in makes the
@@ -443,6 +459,15 @@ def money_summary(plan: dict, config: dict) -> dict[str, Any]:
         ],
         "total_saving": round(sum(s.saved for s in savings), 2),
         "freshness": pricesrc.freshness(cat.data),
+        # Weighted by what each night costs, not averaged over nights: a cheap
+        # night priced from receipts and an expensive one guessed do not each
+        # contribute half of "how real is this number".
+        "verified": (
+            round(sum(float(c.get("total") or 0) * float(c.get("verified") or 0)
+                      for c in costs if c and c.get("usable"))
+                  / max(1e-9, sum(float(c.get("total") or 0)
+                                  for c in costs if c and c.get("usable"))), 2)
+            if any(c and c.get("usable") for c in costs) else 0.0),
         # Where the shelf prices came from, if anywhere. The page shows this as
         # attribution, which is the condition the data comes on rather than a
         # nicety -- so it is carried in the payload and not left to the template

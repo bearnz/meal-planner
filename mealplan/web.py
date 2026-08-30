@@ -34,13 +34,16 @@ def index():
     plan = store.load_plan()
     cache = store.load_cache()
     error = None
-    # A plan saved before costing existed has no money block; fill it in on read
-    # rather than forcing a re-plan, which would throw away the week's re-rolls.
-    if plan.get("days") and not plan.get("money"):
+    # Recomputed on every read, not read back from the saved plan. Prices change
+    # without the week changing -- a --grocer-refresh, a receipt, one --price at
+    # the checkout -- and a money block frozen at plan time meant none of that
+    # reached the screen until you re-planned. The page cheerfully reported "0 of
+    # 206 prices verified" with thirteen real ones in the file. It costs 25ms.
+    if plan.get("days"):
         try:
             plan["money"] = service.money_summary(plan, config)
         except Exception:  # noqa: BLE001 - costing is a nicety, the plan is not
-            plan["money"] = {}
+            plan["money"] = plan.get("money") or {}
     if not plan.get("days"):
         try:
             plan = service.generate(config)

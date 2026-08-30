@@ -331,3 +331,15 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
    get to be invisible -- it is the condition the data comes on. */
 .attribution { opacity: .85; }
 .attribution a { color: inherit; }
+
+/* How much of a number is real. Deliberately quieter than the price itself --
+   this is a footnote on a figure, not a second figure. */
+.real-mark, .guess-mark {
+  font-size: .62rem; text-transform: uppercase; letter-spacing: .06em;
+  padding: .05rem .3rem; border-radius: .2rem; vertical-align: .08em;
+}
+.real-mark  { background: rgba(120, 200, 140, .16); color: #7cc88c; }
+.guess-mark { background: rgba(200, 160, 110, .14); color: #c8a06e; }
+.freshness .dim { opacity: .6; }
+.bar-fill.part { background: #c8a06e; }
+.bar-fill.good { background: #7cc88c; }

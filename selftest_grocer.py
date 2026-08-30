@@ -25,6 +25,8 @@ def run(check):
     _stores(check)
     _store_change(check)
     _store_move_refetches(check)
+    _verified(check)
+    _live_money(check)
 
 
 def _sizes(check):
@@ -299,3 +301,90 @@ def _store_move_refetches(check):
               ["prices"]["PAK'nSAVE"]["price"] == 29.99)
     finally:
         grocer.fetch_prices = real
+
+
+
+def _verified(check):
+    print("\nreal prices versus shipped guesses")
+    from mealplan import pricing
+
+    data = {
+        "currency": "NZD", "primary_store": "S", "stores": ["S"],
+        "items": {
+            "beef mince": {"aliases": [], "unit": "g",
+                           "prices": {"S": {"price": 20.0, "per": 1000,
+                                            "checked": "2026-08-30"}}},
+            "paprika": {"aliases": [], "unit": "g",
+                        "prices": {"S": {"price": 100.0, "per": 1000}}},
+        },
+    }
+    cat = pricing.Catalogue(data)
+    check("a price with a checked date is verified", cat.is_verified("beef mince", "S"))
+    check("...and one without is not", not cat.is_verified("paprika", "S"))
+    check("an item with no price at that store is not verified",
+          not cat.is_verified("beef mince", "elsewhere"))
+
+    c = pricing.cost_recipe("500g beef mince\n10g paprika", 1, cat, "S")
+    check("both lines priced", c.coverage == 1.0, str(c.coverage))
+    # $10 of real mince, $1 of guessed paprika.
+    check("the verified share is by money, not by line count",
+          abs(c.verified_share - (10.0 / 11.0)) < 0.01,
+          f"{c.verified_share:.3f} -- half the lines, but most of the money")
+
+    none = pricing.cost_recipe("10g paprika", 1, cat, "S")
+    check("nothing verified is a zero share", none.verified_share == 0.0)
+
+    free = pricing.cost_recipe("", 1, cat, "S")
+    check("a recipe costing nothing does not divide by zero",
+          free.verified_share == 0.0)
+
+
+def _live_money(check):
+    """The money block must not outlive the prices it was built from."""
+    print("\nthe page reflects the prices as they are now")
+    import json
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    from mealplan import service, store, web
+
+    real = {k: getattr(store, k) for k in
+            ("CONFIG_PATH", "PLAN_PATH", "HISTORY_PATH", "UNDO_PATH",
+             "CACHE_PATH", "PRICES_PATH")}
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        for name, src in [("config.json", real["CONFIG_PATH"]),
+                          ("recipes.json", real["CACHE_PATH"]),
+                          ("prices.json", real["PRICES_PATH"])]:
+            shutil.copy(src, tmp / name)
+        store.CONFIG_PATH = tmp / "config.json"
+        store.CACHE_PATH = tmp / "recipes.json"
+        store.PRICES_PATH = tmp / "prices.json"
+        store.PLAN_PATH = tmp / "plan.json"
+        store.HISTORY_PATH = tmp / "history.json"
+        store.UNDO_PATH = tmp / "undo.json"
+        service.catalogue.cache_clear() if hasattr(service.catalogue, "cache_clear") else None
+
+        client = web.app.test_client()
+        client.get("/")
+        plan = json.loads(store.PLAN_PATH.read_text(encoding="utf-8"))
+        check("a plan gets saved", bool(plan.get("days")))
+
+        # Freeze a wrong answer into the saved plan, the way a real one goes
+        # stale the moment prices change under it.
+        plan["money"] = {"per_portion_avg": 999.99, "freshness": {"total": 1,
+                                                                  "checked": 0}}
+        for d in plan["days"]:
+            d["cost"] = {"per_portion": 999.99, "usable": True,
+                         "confident": True, "verified": 0}
+        store.PLAN_PATH.write_text(json.dumps(plan), encoding="utf-8")
+
+        page = client.get("/").get_data(as_text=True)
+        check("a stale saved money block is not shown", "999.99" not in page,
+              "prices change without the week changing; a saved figure is a "
+              "photograph of prices.json at plan time")
+    finally:
+        for k, v in real.items():
+            setattr(store, k, v)
+        shutil.rmtree(tmp, ignore_errors=True)

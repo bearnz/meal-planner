@@ -668,6 +668,9 @@ if __name__ == "__main__":
     import selftest_library
     selftest_library.run(check)
 
+    import selftest_grocer
+    selftest_grocer.run(check)
+
     import selftest_speed
     selftest_speed.run(check, scored_library())
 

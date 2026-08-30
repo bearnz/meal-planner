@@ -326,3 +326,8 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
 .undo-text { flex: 1 1 20rem; }
 .undo-actions { display: flex; gap: 0.4rem; }
 .undo-actions form { margin: 0; }
+
+/* Attribution for a third-party price source. Quiet, but it does not
+   get to be invisible -- it is the condition the data comes on. */
+.attribution { opacity: .85; }
+.attribution a { color: inherit; }

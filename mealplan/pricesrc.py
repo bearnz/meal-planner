@@ -1,23 +1,23 @@
 """Getting real prices into prices.json, and knowing which ones to trust.
 
-**Why there is no scraper here.** The obvious answer to "where do prices come
-from" is to fetch them from the supermarket. Foodstuffs (PAK'nSAVE and New
-World, one platform) publish a robots.txt that disallows exactly the two paths
-this would need:
+**Where prices come from.** Three sources, in descending order of how much
+they can be trusted:
 
-    Disallow: /search          Disallow: /shop/search
-    Disallow: /shop/offer      Disallow: /product-promotions
-
-Product lookup by name, and the current promotions. That is a machine-readable
-instruction from the operator about automated access, naming the endpoints, so
-this project does not request them. `robots_allows()` below is the gate: any
-future fetcher has to pass through it, and it fails closed.
-
-That leaves two ways in, and both are better data anyway because they are what
-you were actually charged rather than a shelf price for a different store:
-
-- `--receipt` reads a receipt or order history you already have.
+- `--receipt` reads a receipt or order history you already have. This is what
+  you were actually charged, at your store, in your quantities.
 - `--price` sets one item by hand, in a second, at the checkout.
+- `--grocer-refresh` pulls current shelf prices for one store from grocer.nz.
+  See `grocer.py`; it is one 60 KB request a week and every item it touches was
+  matched to a product by a person rather than by a fuzzy string match.
+
+**On Foodstuffs directly.** PAK'nSAVE and New World are one platform, and their
+robots.txt disallows `/search` and `/shop/search` -- product lookup by name,
+which is exactly what a price fetcher needs. Product pages themselves are not
+disallowed, but they answer a non-browser client with 403, and their prices are
+per-store behind the `?store=` parameter that robots.txt also disallows. So
+there is no honest route in that does not involve pretending to be a browser,
+and this project does not. `robots_allows()` is the gate every fetcher passes
+through, and it fails closed.
 
 Both stamp `checked` with the date, and `stale_items()` finds what has drifted,
 so the page can show which numbers were verified and which are still guesses.
@@ -28,6 +28,8 @@ from __future__ import annotations
 import re
 import urllib.parse
 import urllib.robotparser
+
+import requests
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -39,10 +41,21 @@ USER_AGENT = "meal-planner/1.0 (personal use)"
 def robots_allows(url: str, agent: str = USER_AGENT) -> bool:
     """Whether robots.txt permits fetching this URL. Fails closed.
 
-    Unreachable robots.txt returns False rather than True. The permissive
-    default is the conventional one and it is wrong here: a site that is timing
-    out or rate-limiting is the one case where hammering it is worst, and
-    "I could not read the rules" is not a reason to assume there are none.
+    Fetched with `requests` and our real User-Agent rather than through
+    `RobotFileParser.read()`, which was the bug this function shipped with.
+    urllib sends `Python-urllib/3.x`, a CDN in front of a site answers that with
+    403, and urllib's parser reads a 403 as "everything is disallowed" -- so
+    this returned False for every URL on any site behind Cloudflare, including
+    ones whose robots.txt says `Allow: /`. A gate that refuses everything looks
+    exactly like a gate that works until you check.
+
+    The status codes are the conventional reading, and the two unusual ones are
+    deliberate. 404 means the site published no rules, which is permission by
+    convention rather than a refusal. 401 and 403 on robots.txt itself mean the
+    operator is refusing to say, and that is treated as a no. Anything
+    unreachable is also a no: a site that is timing out or rate-limiting is the
+    one case where hammering it is worst, and "I could not read the rules" has
+    never been a reason to assume there are none.
     """
     try:
         parts = urllib.parse.urlsplit(url)
@@ -50,8 +63,15 @@ def robots_allows(url: str, agent: str = USER_AGENT) -> bool:
         rp = _ROBOTS.get(origin)
         if rp is None:
             rp = urllib.robotparser.RobotFileParser()
-            rp.set_url(origin + "/robots.txt")
-            rp.read()
+            r = requests.get(origin + "/robots.txt", timeout=15,
+                             headers={"User-Agent": agent})
+            if r.status_code in (401, 403):
+                rp.disallow_all = True
+            elif r.status_code >= 400:
+                rp.allow_all = True
+            else:
+                rp.parse(r.text.splitlines())
+            rp.modified()
             _ROBOTS[origin] = rp
         return bool(rp.can_fetch(agent, url))
     except Exception:

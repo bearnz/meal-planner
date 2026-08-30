@@ -9,6 +9,10 @@
     python run.py --receipt receipt.txt --store "PAK'nSAVE"   (preview)
     python run.py --receipt receipt.txt --store "PAK'nSAVE" --apply
     python run.py --missing  which unpriced ingredients block the most recipes
+
+    python run.py --grocer-find "beef chuck"      candidates at your store
+    python run.py --grocer-pin "beef chuck" 1672  remember which one it is
+    python run.py --grocer-refresh                update every pinned price
     python run.py --stale    prices that have never been checked, or are old
 """
 
@@ -166,6 +170,140 @@ def cmd_missing(args) -> int:
     return 0
 
 
+def _grocer_store(config) -> tuple[int, str]:
+    g = config.get("grocer") or {}
+    store_id = int(g.get("store_id") or 0)
+    if not store_id:
+        raise SystemExit(
+            '\n  No grocer.nz store set. Put one in config.json under '
+            '"grocer": {"store_id": ...}.\n')
+    return store_id, str(config.get("primary_store") or "")
+
+
+def _grocer_prices(grocer, store_id):
+    """Live prices, or an empty dict and a printed reason. Never raises."""
+    try:
+        prices, _etag, _same = grocer.fetch_prices(store_id)
+        return prices
+    except grocer.GrocerError as exc:
+        print(f"\n  (no live prices: {exc})")
+        return {}
+
+
+def cmd_grocer_find(args) -> int:
+    """Show candidate products so a person can choose. Never picks for you.
+
+    Choosing by hand is the whole reason this is a separate command from the
+    refresh. Searching their catalogue for "beef chuck" returns the right steak
+    first and then four kinds of cat food, and once a wrong pick has become a
+    number on a meal plan there is nothing about it that looks wrong. So this
+    prints and stops.
+    """
+    from mealplan import grocer
+
+    config = store.load_config()
+    store_id, _ = _grocer_store(config)
+    term = args.grocer_find
+    hits = grocer.search(term, store_id, limit=int(args.limit),
+                         category=args.category)
+    grocer.remember(hits)
+    if not hits:
+        print(f"\n  Nothing at that store matched {term!r}.\n")
+        return 1
+
+    data, _ = _catalogue()
+    known = grocer.pinned(data)
+    prices = _grocer_prices(grocer, store_id)
+    where = (config.get("grocer") or {}).get("store_name") or store_id
+
+    print(f"\n  {len(hits)} candidate(s) for {term!r} at {where}\n")
+    for h in hits:
+        p = prices.get(h.id)
+        if p:
+            amount, unit = grocer.parse_size(h.size)
+            per = (f"${p.best_cent / 100:.2f} per {amount:g}{unit}"
+                   if amount else f"${p.best_cent / 100:.2f} per ?")
+            if p.sale_cent and p.sale_cent < p.original_cent:
+                per += f"  SPECIAL was ${p.original_cent / 100:.2f}"
+        else:
+            per = "no price at this store"
+        print(f"    {h.id:>8}  {h.label[:42]:<42} {(h.size or 'loose/kg'):<9} {per}")
+        print(f"    {'':>8}  {h.category}")
+
+    ids = {h.id for h in hits}
+    already = [i for i, v in known.items() if v.get("id") in ids]
+    if already:
+        print(f"\n  Already pinned: {', '.join(already)}")
+    print('\n  Pin one with:  python run.py --grocer-pin "<item>" <id>\n')
+    print(f"  {grocer.ATTRIBUTION}\n")
+    return 0
+
+
+def cmd_grocer_pin(args) -> int:
+    """Record that an item in prices.json is a particular grocer.nz product."""
+    from mealplan import grocer
+
+    config = store.load_config()
+    store_id, _ = _grocer_store(config)
+    item, pid = args.grocer_pin[0], int(args.grocer_pin[1])
+    data, cat = _catalogue()
+    # An exact entry wins, then an alias; anything else is a new ingredient,
+    # which is the usual reason for pinning one at all -- the names worth
+    # pinning are exactly the ones --missing reports as having no entry.
+    key = item if item in (data.get("items") or {}) else (cat.match(item) or item)
+
+    # The price file is the thing that actually has to contain it: an id that
+    # is not in there would pin cleanly and then never refresh, which is a
+    # silent no-op rather than an error.
+    prices = _grocer_prices(grocer, store_id)
+    if prices and pid not in prices:
+        print(f"\n  Product {pid} has no price at that store, so pinning it "
+              f"would never refresh. Nothing written.\n", file=sys.stderr)
+        return 1
+
+    # What --grocer-find last showed. Their search key cannot fetch a
+    # document by id, so this is the only way to know the pack size, and the
+    # pack size is what turns a shelf price into a price per gram.
+    product = grocer.recall(pid)
+    if product is None:
+        print(f"\n  Product {pid} was not among the candidates that --grocer-find "
+              f"last showed, so its pack size is unknown -- and guessing that "
+              f"is how a 500g pack gets priced as a kilo. Run:\n\n"
+              f'    python run.py --grocer-find "{item}"' + "\n\n",
+              file=sys.stderr)
+        return 1
+
+    _ok, created = grocer.pin(data, key, product)
+    store._write_json(store.PRICES_PATH, data)
+    verb = "is a new item, pinned to" if created else "is now"
+    print(f"\n  {key!r} {verb} grocer.nz product {pid} "
+          f"({product.label}, {product.size or 'loose/kg'}).")
+    print("  Run --grocer-refresh to price it.\n")
+    return 0
+
+
+def cmd_grocer_refresh(args) -> int:
+    """The weekly job: one 60 KB download, every pinned price updated."""
+    from mealplan import grocer
+
+    config = store.load_config()
+    store_id, storename = _grocer_store(config)
+    data, _ = _catalogue()
+    result = grocer.refresh(data, store_id, storename, force=bool(args.force))
+    store._write_json(store.PRICES_PATH, data)
+
+    print(f"\n  {result['status']}")
+    for line in result["updated"]:
+        print(f"    ok    {line}")
+    for line in result["missing"]:
+        print(f"    gone  {line}")
+    for line in result["skipped"]:
+        print(f"    skip  {line}")
+    print(f"\n  {len(result['updated'])} price(s) updated at {storename}.")
+    print(f"  {grocer.ATTRIBUTION}\n")
+    return 0
+
+
 def cmd_stale(args) -> int:
     """Which prices are real and which are still the shipped estimates."""
     data, _ = _catalogue()
@@ -217,6 +355,17 @@ def main() -> int:
     ap.add_argument("--store", default="", help="which supermarket")
     ap.add_argument("--missing", action="store_true",
                     help="which unpriced ingredients block the most recipes")
+    ap.add_argument("--grocer-find", metavar="ITEM",
+                    help="search grocer.nz for a product to price ITEM with")
+    ap.add_argument("--grocer-pin", nargs=2, metavar=("ITEM", "PRODUCT_ID"),
+                    help="remember which grocer.nz product ITEM is")
+    ap.add_argument("--grocer-refresh", action="store_true",
+                    help="update every pinned price from grocer.nz")
+    ap.add_argument("--force", action="store_true",
+                    help="with --grocer-refresh, ignore the refresh interval")
+    ap.add_argument("--limit", default=8, help="how many candidates to show")
+    ap.add_argument("--category", default="",
+                    help='narrow --grocer-find, e.g. "Meat & Seafood"')
     ap.add_argument("--stale", action="store_true",
                     help="list prices that are unchecked or old")
     args = ap.parse_args()
@@ -236,6 +385,12 @@ def main() -> int:
             return cmd_receipt(args)
         if args.missing:
             return cmd_missing(args)
+        if args.grocer_find:
+            return cmd_grocer_find(args)
+        if args.grocer_pin:
+            return cmd_grocer_pin(args)
+        if args.grocer_refresh:
+            return cmd_grocer_refresh(args)
         if args.stale:
             return cmd_stale(args)
     except Exception as exc:  # noqa: BLE001 - a CLI should say what broke

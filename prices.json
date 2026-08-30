@@ -700,9 +700,18 @@
           "price": 12.0
         },
         "PAK'nSAVE": {
-          "per": 1000,
-          "price": 9.5
+          "per": 1000.0,
+          "price": 4.79,
+          "checked": "2026-08-30"
         }
+      },
+      "grocer": {
+        "id": 44794,
+        "name": "Green Curly Kale",
+        "size": "",
+        "category": "Fruit & Vegetables > Vegetables",
+        "yield": 1.0,
+        "note": "bunch, leaves stripped from the stems"
       }
     },
     "cabbage": {
@@ -822,9 +831,18 @@
           "price": 3.8
         },
         "PAK'nSAVE": {
-          "per": 100,
-          "price": 3.0
+          "per": 300.0,
+          "price": 5.99,
+          "checked": "2026-08-30"
         }
+      },
+      "grocer": {
+        "id": 89947,
+        "name": "Pams Baby Spinach",
+        "size": "300g",
+        "category": "Fruit & Vegetables > Vegetables",
+        "yield": 1.0,
+        "note": "sold as baby spinach here; no loose spinach at this store"
       }
     },
     "beansprouts": {
@@ -1928,7 +1946,7 @@
     "attribution": "Price data from grocer.nz, used for personal, non-commercial use.",
     "store_id": 222,
     "store": "PAK'nSAVE",
-    "fetched": "2026-08-30T10:52:31+00:00",
+    "fetched": "2026-08-30T11:04:04+00:00",
     "etag": "\"14f4c0b3605edad257cd155b732ea6b7\""
   }
 }

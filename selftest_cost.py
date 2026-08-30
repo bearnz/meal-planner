@@ -15,6 +15,8 @@ def run(check):
         return
 
     _parsing(check)
+    _stated_weight(check, cat)
+    _name_before_notes(check, cat)
     _units(check, cat)
     _staples(check, cat)
     _costing(check, cat)
@@ -60,6 +62,115 @@ def _parsing(check):
         check(f"{raw!r} yields no usable amount",
               L.amount is None or L.unit in pricing.VAGUE_WORDS,
               f"amount={L.amount} unit={L.unit!r}")
+
+
+def _stated_weight(check, cat):
+    """A cup of a solid, with the weight written beside it. Take the weight."""
+    print("\na weight beats a cup of a solid")
+
+    # Both spellings RecipeTin Eats uses, and it uses one or the other on
+    # nearly every American measure it gives.
+    for raw, want in [
+            ("3 1/2 cups (350g) shredded Colby, Monterey Jack or Oaxaca cheese", 350.0),
+            ("1 1/2 cups / 150g mozzarella cheese , shredded", 150.0),
+            ("2 tbsp (30g) butter", 30.0),
+            ("1 cup (8 oz) sour cream", 226.8)]:
+        L = pricing.parse_line(raw)
+        check(f"{raw[:34]!r} is {want:g} g",
+              L.unit == "g" and abs(L.amount - want) < 0.5,
+              f"{L.amount} {L.unit}")
+
+    # A cup of a solid is a quantity plus how hard you pressed; the gram figure
+    # has none of that in it. So this is not tidying, it is the difference
+    # between a measurement and a guess, and it is why none of the four above
+    # needs the catalogue to know a density.
+    L = pricing.parse_line("3 1/2 cups (350g) shredded cheese")
+    amt, why = cat.to_item_units(L, "cheddar")
+    check("...so the line costs without a density being consulted",
+          amt == 350.0, f"{amt} {why}")
+
+    # The rule is one-way on purpose. Metric-then-imperial is the same amount
+    # said twice for two audiences, the metric half is already in hand, and
+    # there is nothing to prefer.
+    for raw, want, unit in [("600g / 1.4lb beef chuck", 600.0, "g"),
+                            ("1kg/2lb chicken thighs", 1.0, "kg"),
+                            ("500ml / 2 cups chicken stock", 500.0, "ml")]:
+        L = pricing.parse_line(raw)
+        check(f"{raw!r} keeps its metric half", L.amount == want and L.unit == unit,
+              f"{L.amount} {L.unit}")
+
+    # A second *volume* is not worth swapping to either -- it says the same
+    # thing -- and a count is left alone, or "1 onion (150g)" stops being an
+    # onion and the shopping list starts asking for 150 g of onion.
+    L = pricing.parse_line("1 cup (250ml) milk")
+    check("a volume restated as a volume is left alone",
+          L.amount == 1.0 and L.unit == "cup", f"{L.amount} {L.unit}")
+    L = pricing.parse_line("1 onion (150g) , finely diced")
+    check("a count with a weight beside it is still a count",
+          L.amount == 1.0 and L.unit == "", f"{L.amount} {L.unit}")
+
+    # Bracketed numbers that are not amounts must not be mistaken for one.
+    L = pricing.parse_line("5 cups (tightly packed) kale leaves (1 small bunch, Note 3)")
+    check("a bracketed note is not an amount",
+          L.amount == 5.0 and L.unit == "cups", f"{L.amount} {L.unit}")
+
+    # The invariant that ties this to the scaler, and the one that broke:
+    # preferring the weight is only safe while the scaler is also scaling it.
+    # Whatever a halved line *says* has to be what the costing *reads*.
+    from mealplan import quantity
+    for raw in ("3 1/2 cups (350g) shredded cheese",
+                "1 1/2 cups / 150g mozzarella cheese",
+                "1 tbsp / 15 g butter"):
+        for factor in (0.5, 0.25, 2.0):
+            half = quantity.scale_line(raw, factor).text
+            whole = pricing.parse_line(raw).amount
+            part = pricing.parse_line(half).amount
+            check(f"{raw[:26]!r} x{factor} reads what it says",
+                  abs(part - whole * factor) <= max(2.5, whole * factor * 0.05),
+                  f"line says {half!r}, costing read {part}")
+
+
+def _name_before_notes(check, cat):
+    """A recipe writer's aside says what to use *instead*. It is not the line."""
+    print("\nan ingredient is its name, not its footnote")
+
+    # Every one of these was priced as the substitute before `key_for` existed,
+    # silently and plausibly, because a substitution note is made of real
+    # ingredient names.
+    for raw, want in [
+            ("3 1/2 tbsp (50g) unsalted butter (or 2 1/2 tbsp olive oil)", "butter"),
+            ("10-12 eggs (reserve one yolk for glazing pastry)", "egg"),
+            ("3/4 tsp cumin powder (sub coriander)", "ground spices"),
+            ("1 tsp onion powder (sub garlic powder)", "onion"),
+            ("1/3 cup white wine (sub more chicken stock)", "white wine"),
+            ("1 tbsp cooking/kosher salt (for cooking pasta)", "salt"),
+            # Both of these used to swap places with each other, and the fix
+            # for the second one exposed that the first was priced as a bag of
+            # chopped peanuts. Oil is oil whichever nut it came out of.
+            ("2 tbsp peanut oil (or vegetable or canola oil)", "vegetable oil"),
+            ("1 1/2 tbsp cooking oil (I use peanut oil)", "vegetable oil"),
+            ("3 tbsp peanuts , roughly chopped", "peanut"),
+            ("1/4 cup sour cream (or yoghurt)", "cream"),
+            ("2 tbsp lime juice (sub rice vinegar when limes are expensive)", "lime")]:
+        got = cat.key_for(pricing.parse_line(raw))
+        check(f"{raw[:38]!r} is {want}", got == want, repr(got))
+
+    # The fallback still has to work: the stripper can eat a name to nothing,
+    # and then the notes are all there is.
+    L = pricing.parse_line("3 1/2 cups (350g) shredded Colby, Monterey Jack or Oaxaca cheese")
+    check("a line whose name strips to nothing falls back to the raw text",
+          not L.item and cat.key_for(L) == "cheddar", f"{L.item!r} {cat.key_for(L)!r}")
+
+    # Where two aliases are the same length the answer must not depend on what
+    # order the price file happens to list its items in.
+    for raw, want in [("25 g guajillo chillies, dried (~4 pieces)", "dried chilli"),
+                      ("45 g ancho chillies, dried", "dried chilli"),
+                      ("1/2 tsp fennel powder (sub more garam masala)", "ground spices"),
+                      ("2 tsp fennel seeds", "whole spices"),
+                      ("1/4 medium fennel , chopped", "fennel"),
+                      ("2 red chillies , deseeded", "chilli")]:
+        got = cat.key_for(pricing.parse_line(raw))
+        check(f"{raw[:34]!r} is {want}", got == want, repr(got))
 
 
 def _units(check, cat):
@@ -132,6 +243,20 @@ def _staples(check, cat):
     # And a non-staple with no amount is still honestly unpriced.
     c = pricing.cost_recipe("beef mince", 4, cat)
     check("a non-staple with no amount is reported unpriced",
+          len(c.unpriced) == 1, str([l.raw for l in c.unpriced]))
+
+    # A vague amount of a staple is the same case wearing a number. Nobody
+    # measures a pinch and nobody buys one, so the only honest thing to say
+    # about it is that it is under any allowance worth the name.
+    c = pricing.cost_recipe("1 pinch cooking / kosher salt\na knob of butter\n"
+                            "a good glug of olive oil", 4, cat)
+    check("a pinch of a staple is free rather than unpriced",
+          c.total == 0.0 and not c.unpriced, str([l.raw for l in c.unpriced]))
+
+    # ...but only for staples. A handful of prawns is a real purchase, and
+    # quietly calling it free is how a number ends up lower than the shop.
+    c = pricing.cost_recipe("a handful of prawns", 4, cat)
+    check("a vague amount of something you buy is still unpriced",
           len(c.unpriced) == 1, str([l.raw for l in c.unpriced]))
 
 

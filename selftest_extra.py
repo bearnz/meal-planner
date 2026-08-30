@@ -54,6 +54,30 @@ def _quantities(check):
         check(f"{text!r} is left alone", not r.scaled and r.text == text,
               f"became {r.text!r}")
 
+    # Where a line says the amount twice, both halves scale. Half of "3 1/2
+    # cups (350g)" is not "1 3/4 cups (350g)" -- that line contradicts itself,
+    # on a page read in a shop, and the costing now *prefers* the weight, so a
+    # stale one puts a whole batch of cheese in a quarter batch of tacos.
+    for text, factor, want in [
+            ("3 1/2 cups (350g) shredded cheese", 0.5,
+             "1 3/4 cups (175g) shredded cheese"),
+            ("1 1/2 cups / 150g mozzarella", 0.5, "3/4 cups / 75g mozzarella"),
+            ("600g / 1.4lb beef chuck", 0.5, "300g / 0.7lb beef chuck"),
+            ("1 cup (250ml) milk", 0.5, "1/2 cup (125ml) milk")]:
+        got = quantity.scale_line(text, factor).text
+        check(f"{text[:30]!r} scales both halves", got == want, f"got {got!r}")
+
+    # ...and a bracketed number that is not a restatement is left where it is.
+    # Each of these reads as one if the pattern is allowed to roam.
+    for text in ("5 cups (tightly packed) kale leaves (1 small bunch, Note 3)",
+                 "2 tbsp minced ginger (~5cm/2 inch piece)",
+                 "1 onion (150g) , finely diced",
+                 "3 1/2 cups shredded cheese (Note 6)"):
+        got = quantity.scale_line(text, 0.5).text
+        tail = text[text.index("("):]
+        check(f"{text[:34]!r} keeps its note", got.endswith(tail),
+              f"got {got!r}")
+
     # A whole-number metric result, because 187.5g is not a weight.
     got = quantity.scale_line("375g flour", 0.5).text
     check("fine metric rounds to a whole number", "." not in got, got)

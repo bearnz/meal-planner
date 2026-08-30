@@ -61,7 +61,7 @@
       }
     },
     "beef shin": {
-      "aliases": [
+      "aliases": ["stewing beef", "stewing steak", "beef stew meat", "casserole beef", 
         "shin of beef",
         "gravy beef"
       ],
@@ -168,6 +168,7 @@
       }
     },
     "pork mince": {
+      "aliases": ["ground pork"],
       "unit": "g",
       "prices": {
         "New World": {
@@ -464,6 +465,7 @@
       }
     },
     "shallot": {
+      "aliases": ["eschallot", "eschalot", "french shallot", "eschallots"],
       "unit": "each",
       "g_per_unit": 40,
       "prices": {
@@ -609,7 +611,7 @@
         "tomato passata",
         "passata"
       ],
-      "unit": "g",
+      "unit": "g", "g_per_ml": 1.0,
       "prices": {
         "New World": {
           "per": 400,
@@ -695,7 +697,7 @@
       }
     },
     "kale": {
-      "unit": "g",
+      "unit": "g", "g_per_ml": 0.28,
       "prices": {
         "New World": {
           "per": 1000,
@@ -838,6 +840,7 @@
       ],
       "unit": "each",
       "g_per_unit": 400,
+      "ml_per_unit": 1800,
       "prices": {
         "New World": {
           "per": 1,
@@ -869,7 +872,7 @@
       "aliases": [
         "baby spinach"
       ],
-      "unit": "g",
+      "unit": "g", "g_per_ml": 0.25,
       "prices": {
         "New World": {
           "per": 100,
@@ -1103,12 +1106,12 @@
       }
     },
     "cheddar": {
-      "aliases": [
+      "aliases": ["colby", "monterey jack", 
         "cheddar cheese",
         "tasty cheese",
         "cheese"
       ],
-      "unit": "g",
+      "unit": "g", "g_per_ml": 0.4,
       "prices": {
         "New World": {
           "per": 1000,
@@ -1173,11 +1176,15 @@
       }
     },
     "mozzarella": {
-      "unit": "g",
+      "unit": "g", "g_per_ml": 0.4,
       "prices": {
         "New World": {
           "per": 125,
           "price": 4.5
+        },
+        "PAK'nSAVE": {
+          "per": 125,
+          "price": 3.6
         }
       }
     },
@@ -1220,13 +1227,14 @@
       }
     },
     "pasta": {
-      "aliases": [
+      "aliases": ["elbow macaroni", "bow tie pasta", "farfalle", "fusilli", 
         "spaghetti",
         "penne",
         "rigatoni",
         "macaroni"
       ],
       "unit": "g",
+      "g_per_ml": 0.4,
       "prices": {
         "New World": {
           "per": 500,
@@ -1387,6 +1395,7 @@
         "puy lentils"
       ],
       "unit": "g",
+      "g_per_ml": 0.8,
       "prices": {
         "New World": {
           "per": 500,
@@ -1404,6 +1413,7 @@
         "roasted peanuts"
       ],
       "unit": "g",
+      "g_per_ml": 0.6,
       "prices": {
         "New World": {
           "per": 250,
@@ -1555,7 +1565,7 @@
       }
     },
     "vegetable oil": {
-      "aliases": [
+      "aliases": ["peanut oil", "groundnut oil", 
         "sunflower oil",
         "canola oil",
         "oil",
@@ -1669,7 +1679,7 @@
       }
     },
     "stock": {
-      "aliases": [
+      "aliases": ["beef broth", "chicken broth", "bone broth", "broth", 
         "chicken stock",
         "beef stock",
         "vegetable stock",
@@ -1769,6 +1779,10 @@
         "New World": {
           "per": 500,
           "price": 9.5
+        },
+        "PAK'nSAVE": {
+          "per": 500,
+          "price": 7.5
         }
       }
     },
@@ -1809,7 +1823,7 @@
       }
     },
     "ground spices": {
-      "aliases": [
+      "aliases": ["fennel powder", "ground fennel", 
         "cumin",
         "coriander seed",
         "paprika",
@@ -1862,7 +1876,7 @@
         "fresh coriander",
         "fresh basil"
       ],
-      "unit": "g",
+      "unit": "g", "g_per_ml": 0.07,
       "g_per_unit": 20,
       "staple": true,
       "perishable": true,
@@ -1880,7 +1894,7 @@
     },
     "chilli": {
       "plural": "chillies",
-      "aliases": [
+      "aliases": ["birds eye chili", "thai chili", "red chili", "chili", 
         "red chilli",
         "green chilli",
         "chillies"
@@ -1898,7 +1912,7 @@
       }
     },
     "dried chilli": {
-      "aliases": [
+      "aliases": ["ancho chiles", "guajillo chiles", "arbol chiles", "dried chiles", "chipotle chiles", "guajillo chillies", "ancho chillies", "dried red chillies", "red chillies, dried", 
         "dried chillies",
         "dried chillis",
         "chillies, dried",
@@ -1910,7 +1924,8 @@
         "chilli flakes",
         "chilli powder"
       ],
-      "unit": "g",
+      "unit": "g", "g_per_ml": 0.22,
+      "g_per_unit": 6,
       "staple": true,
       "free_allowance": 25,
       "prices": {
@@ -1930,6 +1945,7 @@
         "root ginger"
       ],
       "unit": "g",
+      "g_per_ml": 0.4,
       "staple": true,
       "perishable": true,
       "free_allowance": 25,
@@ -1937,6 +1953,10 @@
         "New World": {
           "per": 1000,
           "price": 28.0
+        },
+        "PAK'nSAVE": {
+          "per": 1000,
+          "price": 21.0
         }
       }
     },
@@ -1954,12 +1974,17 @@
         "tamarind paste"
       ],
       "unit": "g",
+      "g_per_ml": 1.2,
       "staple": true,
       "free_allowance": 40,
       "prices": {
         "New World": {
           "per": 200,
           "price": 6.0
+        },
+        "PAK'nSAVE": {
+          "per": 200,
+          "price": 4.8
         }
       }
     },
@@ -1985,7 +2010,7 @@
       }
     },
     "beef chuck": {
-      "aliases": [
+      "aliases": ["chuck roast", 
         "beef chuck",
         "chuck beef",
         "chuck steak",
@@ -2045,7 +2070,7 @@
       }
     },
     "whole spices": {
-      "aliases": [
+      "aliases": ["cinnamon quill", "cinnamon stick", 
         "star anise",
         "fennel seeds",
         "cumin seeds",
@@ -2062,7 +2087,7 @@
         "fenugreek",
         "szechuan peppercorns"
       ],
-      "unit": "g",
+      "unit": "g", "g_per_unit": 1,
       "g_per_ml": 0.55,
       "staple": true,
       "free_allowance": 25,
@@ -2222,7 +2247,11 @@
           "price": 4.0
         }
       }
-    }
+    },
+    "frozen peas": {"aliases": ["peas", "frozen baby peas", "petit pois"], "unit": "g", "g_per_ml": 0.6, "prices": {"New World": {"per": 1000, "price": 5.5}, "PAK'nSAVE": {"per": 1000, "price": 4.2}}},
+    "sunflower seeds": {"aliases": ["pumpkin seeds", "pepitas"], "unit": "g", "g_per_ml": 0.58, "staple": true, "free_allowance": 30, "prices": {"New World": {"per": 1000, "price": 12.0}, "PAK'nSAVE": {"per": 1000, "price": 9.5}}},
+    "hot sauce": {"aliases": ["salsa", "sriracha", "tabasco", "chilli sauce"], "unit": "ml", "g_per_ml": 1.1, "staple": true, "free_allowance": 30, "prices": {"New World": {"per": 250, "price": 5.5}, "PAK'nSAVE": {"per": 250, "price": 4.4}}},
+    "red wine": {"aliases": ["pinot noir", "cabernet sauvignon", "merlot", "shiraz", "burgundy", "dry red wine", "full bodied red wine"], "unit": "ml", "prices": {"New World": {"per": 750, "price": 14.0}, "PAK'nSAVE": {"per": 750, "price": 11.0}}}
   },
   "grocer": {
     "source": "grocer.nz",

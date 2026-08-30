@@ -681,7 +681,7 @@ def _the_same_thing_written_differently(check):
 
     def key_for(text):
         line = pricing.parse_line(text)
-        return cat.match(line.item_raw or line.item) or cat.match(line.item)
+        return cat.key_for(line)
 
     for text, want in [
             # The same cut, written either way round.
@@ -780,7 +780,7 @@ def _counted_things(check):
     # arrive as cloves, or the allowance and the count are in different units.
     def amount(text):
         line = pricing.parse_line(text)
-        key = cat.match(line.item_raw or line.item) or cat.match(line.item)
+        key = cat.key_for(line)
         return cat.to_item_units(line, key)[0] if key else None
 
     check("'3 garlic cloves' is 3", amount("3 garlic cloves") == 3.0,
@@ -815,7 +815,7 @@ def _counted_things(check):
     # taking the longest alias first and by nothing else.
     def key_for(text):
         line = pricing.parse_line(text)
-        return cat.match(line.item_raw or line.item) or cat.match(line.item)
+        return cat.key_for(line)
 
     check("'1/4 medium fennel, chopped' is the vegetable",
           key_for("1/4 medium fennel , chopped (Note 2)") == "fennel",

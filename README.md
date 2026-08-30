@@ -319,7 +319,7 @@ Working end to end against the demo library. To pick it up:
 
 ```bash
 python seed_demo.py && python run.py      # see it work with invented recipes
-python selftest.py                        # 201 checks, all passing
+python selftest.py                        # 225 checks, all passing
 ```
 
 **Not yet done, in the order it probably matters:**
@@ -350,9 +350,9 @@ python selftest.py                        # 201 checks, all passing
    changes nothing produces none.
 
 5. **Smaller things:** the seasonality table is ~65 items and a starting point
-   rather than an authority; `EYE_SLIDE`-style judgement calls in the effort
-   constants have only been tested against a 13-recipe demo library and will
-   want revisiting once a real one is loaded; and the shopping list still does
+   rather than an authority; the effort ceilings and targets in `day_types` have
+   only ever been judged against a 13-recipe demo library, so expect to retune
+   them once a real one is loaded; and the shopping list still does
    not merge quantities across recipes, which is the one deliberate gap.
 
 ## Layout

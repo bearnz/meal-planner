@@ -259,6 +259,8 @@ class Scored:
     excluded_by: list[str]       # aversions that rule it out entirely
     category_names: list[str]
     reasons: list[str]
+    # Filled in by tags() on first ask; see the note there for why.
+    _tags: set[str] | None = None
 
     @property
     def uid(self) -> str:
@@ -470,17 +472,27 @@ STARCH_TERMS = ["pasta", "rice", "noodle", "potato", "bread", "tortilla",
                 "couscous", "polenta", "gnocchi", "quinoa"]
 
 
+# Compiled once rather than rebuilt per call.
+_WORD_TAGS = (
+    [("protein:" + t, re.compile(r"\b" + t + r"s?\b")) for t in PROTEIN_TERMS]
+    + [("starch:" + t, re.compile(r"\b" + t + r"s?\b")) for t in STARCH_TERMS]
+)
+
+
 def tags(s: Scored) -> set[str]:
-    """The handful of labels used to keep a week from repeating itself."""
-    hay = _haystack(s.recipe, s.category_names)
-    found: set[str] = set()
-    for term in PROTEIN_TERMS:
-        if re.search(r"\b" + term + r"s?\b", hay):
-            found.add("protein:" + term)
-    for term in CUISINE_TERMS:
-        if term in hay:
-            found.add("cuisine:" + term)
-    for term in STARCH_TERMS:
-        if re.search(r"\b" + term + r"s?\b", hay):
-            found.add("starch:" + term)
-    return found
+    """The handful of labels used to keep a week from repeating itself.
+
+    Cached on the Scored, and that is not a micro-optimisation. This is a pure
+    function of a recipe, which cannot change while a plan is being built, and
+    the local search asks for it once per recipe per swap it considers --
+    around fifteen thousand times for one seven-day week. Each ask ran fifty
+    regexes over the *whole text* of a recipe, directions included, which on a
+    real library is several kilobytes. Half a million full-text scans per
+    replan, and it was substantially the whole of the wait.
+    """
+    if s._tags is None:
+        hay = _haystack(s.recipe, s.category_names)
+        found = {tag for tag, pat in _WORD_TAGS if pat.search(hay)}
+        found |= {"cuisine:" + t for t in CUISINE_TERMS if t in hay}
+        s._tags = found
+    return s._tags

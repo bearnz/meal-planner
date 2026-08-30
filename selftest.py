@@ -635,7 +635,7 @@ def test_live_weather():
         lat, lon, pretty = wx.geocode("Auckland, NZ")
         check("geocoded Auckland", -90 <= lat <= 90 and -180 <= lon <= 180,
               f"{lat},{lon}")
-        fc = wx.forecast(lat, lon, days=7)
+        fc = wx.forecast(lat, lon, days=7, max_age=0)
         check("got 7 days of forecast", len(fc) == 7, str(len(fc)))
         # Within a day of the machine's date rather than equal to it: the
         # forecast is in the location's timezone, so a machine clocked
@@ -667,6 +667,9 @@ if __name__ == "__main__":
 
     import selftest_library
     selftest_library.run(check)
+
+    import selftest_speed
+    selftest_speed.run(check, scored_library())
 
     import selftest_undo
     selftest_undo.run(check)

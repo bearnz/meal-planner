@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 300 checks over scoring, planning, costing and the forecast
+python selftest.py       # 309 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -320,7 +320,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 300 checks, all passing
+python selftest.py                        # 309 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole
@@ -361,6 +361,17 @@ worth remembering: the synthetic library is clean, and a real one is not.
   recipe in the library.
 - **A 2 kg picanha costed $0.00 a portion** and the page printed it with
   "approx" beside it. There are now three states, not two — see `RecipeCost.usable`.
+- **Re-planning took fifteen seconds.** Not the library's doing, but only a
+  real one made it visible. The planner's local search asks each candidate for
+  its variety tags once per swap it tries — about 15,000 asks for one week —
+  and each ask re-ran fifty regexes over the whole text of a recipe, directions
+  included. Half a million full-text scans per re-plan. Tags are a pure function
+  of a recipe that cannot change mid-plan, so they are now derived once. The
+  other second was a live Open-Meteo call on every button press, for a daily
+  forecast that does not change between two clicks; it is cached in process for
+  fifteen minutes. A re-plan is 0.7 s, and the first one of a session is 1.9 s.
+  `selftest_speed.py` counts the work rather than timing it — a stopwatch in a
+  test suite is a coin toss.
 
 **Not yet done, in the order it probably matters:**
 
@@ -414,6 +425,7 @@ selftest_extra.py checks for scaling, aversions, methods and seasons
 selftest_cost.py  checks for parsing, units, staples, costing and specials
 selftest_undo.py  checks for the preferences save/undo path, via the routes
 selftest_library.py checks for the shapes a real Paprika library turned out to have
+selftest_speed.py checks that a re-plan does not redo work it already did
 prices.json       the price catalogue - ESTIMATES, see the notes inside
 seed_demo.py      fill the cache with that library to try the app
 config.json       everything tunable

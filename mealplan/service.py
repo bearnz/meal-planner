@@ -551,6 +551,10 @@ def shopping_by_item(plan: dict, people: int = 0) -> dict[str, Any]:
     makes the total a lie, so the total is dropped and the lines are listed as
     written. That is the same rule the costing follows for the same reason.
 
+    Weights add; **counts are rounded up a recipe at a time and then added**,
+    because two dinners each wanting half an onion want two onions. See
+    `_week_total`.
+
     And the parts are kept whatever happens. A merged entry always says which
     nights wanted it and what each of them asked for, because a single number
     with no working is not checkable while you are holding the bag.
@@ -564,7 +568,8 @@ def shopping_by_item(plan: dict, people: int = 0) -> dict[str, Any]:
             e = entries.setdefault(ln["group"], {
                 "key": ln["group"], "name": ln["name"], "kind": ln["kind"],
                 "unit": ln["unit"], "amount": 0.0, "total": True,
-                "buy": ln["buy"], "parts": [],
+                "buy": ln["buy"], "parts": [], "per_night": {},
+                "spec": (cat.items.get(ln["group"]) or {}),
             })
             e["parts"].append({"day_name": day["day_name"], "recipe": day["name"],
                                "text": ln["text"], "buy": ln["buy"]})
@@ -580,41 +585,121 @@ def shopping_by_item(plan: dict, people: int = 0) -> dict[str, Any]:
             if ln["amount"] is None or ln["unit"] != e["unit"]:
                 e["total"] = False
             else:
-                e["amount"] += ln["amount"]
+                # Banked per night rather than straight into a running total,
+                # because a countable thing is rounded up a recipe at a time.
+                # See `_week_total`.
+                e["per_night"][day["day_name"]] = (
+                    e["per_night"].get(day["day_name"], 0.0) + ln["amount"])
 
     items = sorted(entries.values(), key=_shelf_order)
     for e in items:
-        e["amount"] = round(e["amount"], 2) if e["total"] else None
-        e["qty"] = _quantity_label(e["amount"], e["unit"])
+        e["amount"] = _week_total(e["per_night"], e["unit"]) if e["total"] else None
+        e["qty"] = _quantity_label(e["amount"], e["unit"], e["spec"])
+        e["pack"] = _pack_hint(e["amount"], e["spec"])
+        e["name"] = _plural(e["name"], e["amount"], e["unit"], e["spec"])
         e["nights"] = len({p["day_name"] for p in e["parts"]})
+        del e["per_night"], e["spec"]
     return {
         "ingredients": [e for e in items if e["kind"] != "pantry"],
         "pantry": [e for e in items if e["kind"] == "pantry"],
     }
 
 
-def _quantity_label(amount: float | None, unit: str) -> str:
+def _week_total(per_night: dict[str, float], unit: str) -> float:
+    """The week's amount of one ingredient, from what each night wanted.
+
+    Weights and volumes simply add. **Counts are rounded up one recipe at a
+    time and only then added**, which is the whole of the difference: two
+    dinners each wanting half an onion are two onions, not one. You cut an
+    onion for a recipe and the other half goes soft in the fridge -- the half
+    Tuesday did not use is not the half Thursday gets.
+
+    Rounding the week's total instead is the version that looks tidier and
+    sends you home one onion short, which is the only direction of error that
+    matters in a shop. The cost of being wrong the other way is a spare onion.
+
+    It is a recipe at a time rather than a *line* at a time, so a dish calling
+    for half an onion in the marinade and half in the pan still buys one.
+    """
+    if unit != "each":
+        return round(sum(per_night.values()), 2)
+    return float(sum(math.ceil(v - 1e-9) for v in per_night.values()))
+
+
+def _quantity_label(amount: float | None, unit: str,
+                    spec: dict | None = None) -> str:
     """How much of something to buy, written the way you would say it.
 
-    Two things here are not formatting. A count is rounded **up**: nobody sells
-    a fifth of a broccoli, so a week needing 0.2 of one needs one, and 1.4
-    chicken breasts is a packet of two. Rounding to nearest would send you home
-    without dinner about half the time, which is the only direction of error
-    that matters in a shop.
+    Three things here are not formatting. A count is rounded **up**: nobody
+    sells a fifth of a broccoli, so a week needing 0.2 of one needs one, and
+    1.4 chicken breasts is a packet of two. Rounding to nearest would send you
+    home without dinner about half the time, which is the only direction of
+    error that matters in a shop. (By the time a merged entry gets here the
+    rounding has usually already happened a recipe at a time -- see
+    `_week_total` -- but this is also called on things that never went through
+    a merge.)
 
-    And "each" is never printed. It is the catalogue's word for "this is
-    counted, not weighed", which is worth knowing inside the costing and reads
-    as nonsense on a list -- "0.2 each broccoli".
+    "each" is never printed. It is the catalogue's word for "this is counted,
+    not weighed", which is worth knowing inside the costing and reads as
+    nonsense on a list -- "0.2 each broccoli".
+
+    And where the catalogue names the thing being counted, that noun is used
+    instead: `unit_label` turns "10 garlic" into "10 cloves garlic", which is
+    the only form anybody actually says. Nothing derives it, because there is
+    no rule -- garlic comes in cloves, celery in stalks, broccoli in heads.
     """
     if amount is None:
         return ""
     if unit == "each":
-        return str(math.ceil(amount - 1e-9))
+        n = math.ceil(amount - 1e-9)
+        label = str((spec or {}).get("unit_label") or "")
+        if not label:
+            return str(n)
+        return f"{n} {label}" if n == 1 else f"{n} {label}s"
     # Grams and millilitres to the nearest whole one: a shopping list quoting
     # 60.29 g of butter is precision about an estimate.
     if amount >= 10:
         return f"{round(amount):g} {unit}".strip()
     return f"{round(amount, 1):g} {unit}".strip()
+
+
+def _plural(name: str, amount: float | None, unit: str, spec: dict) -> str:
+    """"4 onions", not "4 onion".
+
+    Only for things counted singly: a weight is already plural-proof ("60 g
+    butter") and an entry that names its own unit has said the countable noun
+    already ("3 cloves garlic" -- the garlic is not what is being counted).
+
+    "+s" with an escape hatch, because English plurals are not derivable and
+    the alternative is either "2 cods" or a plural on every entry in the file.
+    `plural` is written down only where the rule is wrong, which so far is cod
+    and chillies.
+    """
+    if unit != "each" or amount is None or spec.get("unit_label"):
+        return name
+    if math.ceil(amount - 1e-9) == 1:
+        return name
+    return str(spec.get("plural") or (name + "s"))
+
+
+def _pack_hint(amount: float | None, spec: dict) -> str:
+    """What the counted thing is actually sold in, when it is not sold singly.
+
+    Twelve cloves of garlic is the honest amount and not a thing you can pick
+    up: garlic is sold in bulbs. So the count stays the headline -- it is what
+    the recipes asked for -- and this says what to put in the trolley to cover
+    it, rounded up for the same reason everything else here is.
+
+    Only for the deliberately vague. Being a clove or two out on garlic does
+    not matter, which is exactly why quoting it to the gram was worse than
+    useless.
+    """
+    per = float(spec.get("pack_of") or 0)
+    name = str(spec.get("pack_label") or "")
+    if amount is None or not per or not name:
+        return ""
+    packs = math.ceil(amount / per - 1e-9)
+    return f"{packs} {name}" if packs == 1 else f"{packs} {name}s"
 
 
 # Which classification wins when one ingredient arrives wearing two of them

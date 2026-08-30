@@ -42,12 +42,12 @@
     group by and not at all in what a line is. `tick` is what the tick is
     remembered under; it has to name the thing being ticked rather than its
     position, or inserting a recipe above it moves everyone's ticks down one. -#}
-{% macro line_body(text, buy, tick, staple=False, unscaled=False) -%}
+{% macro line_body(text, buy, tick, staple=False, unscaled=False, pack='') -%}
   <label>
     <input type="checkbox" data-tick="{{ tick }}"{% if staple %} data-staple="1"{% endif %}>
     <span class="{% if unscaled %}unscaled{% endif %}"
           {% if unscaled %}title="No quantity here that could be scaled — check this one"{% endif %}
-      >{{ text }}</span>
+      ><span class="what">{{ text }}</span>{% if pack %}<span class="pack-hint">{{ pack }}</span>{% endif %}</span>
   </label>
   {#- What to actually put in the trolley, when it is not what the line says.
       This is the only screen read while standing in the shop, so a price worked
@@ -77,8 +77,12 @@
       <ul>
         {% for e in merged.ingredients %}
           <li class="{% if e.kind == 'perishable' %}perish{% endif %}">
+            {#- The count is what the recipes asked for; the pack is what you
+                can actually pick up. Thirteen cloves of garlic is honest and
+                is not a thing on a shelf. -#}
             {{ line_body((e.qty ~ ' ' ~ e.name) | trim,
-                 e.buy, 'item:' ~ e.key, e.kind == 'perishable') }}
+                 e.buy, 'item:' ~ e.key, e.kind == 'perishable',
+                 False, e.pack) }}
             {#- The working. A single merged number with nothing behind it is not
                 checkable while you are holding the bag, and when the amounts
                 could not be added this is the whole answer rather than a note. -#}

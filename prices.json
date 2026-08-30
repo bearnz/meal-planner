@@ -358,6 +358,7 @@
       }
     },
     "cod": {
+      "plural": "cod",
       "aliases": [
         "cod fillet",
         "cod fillets",
@@ -729,6 +730,25 @@
         }
       }
     },
+    "fennel": {
+      "aliases": [
+        "fennel bulb",
+        "baby fennel"
+      ],
+      "unit": "each",
+      "unit_label": "bulb",
+      "g_per_unit": 250,
+      "prices": {
+        "New World": {
+          "per": 1,
+          "price": 4.5
+        },
+        "PAK'nSAVE": {
+          "per": 1,
+          "price": 3.5
+        }
+      }
+    },
     "celery": {
       "aliases": [
         "celery stem",
@@ -739,6 +759,7 @@
         "celery rib"
       ],
       "unit": "each",
+      "unit_label": "stalk",
       "g_per_unit": 40,
       "prices": {
         "New World": {
@@ -753,6 +774,7 @@
     },
     "broccoli": {
       "unit": "each",
+      "unit_label": "head",
       "g_per_unit": 350,
       "prices": {
         "New World": {
@@ -1623,21 +1645,26 @@
     "garlic": {
       "aliases": [
         "garlic cloves",
-        "clove of garlic"
+        "clove of garlic",
+        "garlic clove"
       ],
-      "unit": "g",
+      "unit": "each",
+      "unit_label": "clove",
+      "pack_of": 10,
+      "pack_label": "bulb",
       "g_per_unit": 5,
+      "ml_per_unit": 5,
       "staple": true,
       "perishable": true,
-      "free_allowance": 30,
+      "free_allowance": 6,
       "prices": {
         "New World": {
-          "per": 1000,
-          "price": 22.0
+          "per": 1,
+          "price": 0.11
         },
         "PAK'nSAVE": {
-          "per": 1000,
-          "price": 17.0
+          "per": 1,
+          "price": 0.09
         }
       }
     },
@@ -1852,6 +1879,7 @@
       }
     },
     "chilli": {
+      "plural": "chillies",
       "aliases": [
         "red chilli",
         "green chilli",

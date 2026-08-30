@@ -18,12 +18,12 @@
     "g_per_unit:    typical weight of one, so '2 onions' can be costed",
     "g_per_ml:      density, so 'cups of flour' can be costed by weight",
     "staple:        assumed already in the cupboard",
-    "free_allowance: how much of a staple is free before the excess is charged"
+    "free_allowance: how much of a staple is free before the excess is charged",
+    "where you shop:  lives in config.json (primary_store), not here -- this file holds a price per chain and the config picks which one is yours"
   ],
   "currency": "NZD",
   "updated": "2026-08-30",
   "estimated": true,
-  "primary_store": "New World",
   "stores": [
     "New World",
     "PAK'nSAVE",

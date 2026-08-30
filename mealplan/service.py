@@ -182,7 +182,12 @@ def catalogue() -> pricing.Catalogue:
     """The price list, read once. Restart to pick up an edit to prices.json."""
     global _CATALOGUE
     if _CATALOGUE is None:
-        _CATALOGUE = pricing.Catalogue(store.load_prices())
+        shop = ""
+        try:
+            shop = str(store.load_config().get("primary_store") or "")
+        except (FileNotFoundError, ValueError):
+            pass          # no config yet; the first listed store will do
+        _CATALOGUE = pricing.Catalogue(store.load_prices(), shop)
     return _CATALOGUE
 
 

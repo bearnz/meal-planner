@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 382 checks over scoring, planning, costing and the forecast
+python selftest.py       # 385 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -325,6 +325,12 @@ python run.py --grocer-pin "beef chuck" 1672
 python run.py --grocer-refresh                             # the weekly job
 ```
 
+**Where you shop is config.json's to say, and only config.json's.**
+`primary_store` there picks which chain's prices the week is costed against;
+`prices.json` holds a price per chain and no opinion about which is yours. It
+used to carry its own copy, the two drifted apart, and anything that asked the
+file got a confident answer about a shop nobody used.
+
 **Which shop.** Prices are per store — Royal Oak and Mt Albert are both
 PAK'nSAVE and neither charges the same. Pick one on the **Preferences page**,
 or set `grocer.store_id` in config.json. Changing it moves two settings
@@ -398,7 +404,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 382 checks, all passing
+python selftest.py                        # 385 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole

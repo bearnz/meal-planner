@@ -264,12 +264,24 @@ def parse_line(raw: str) -> Line:
 class Catalogue:
     """The price list, indexed for matching against messy ingredient text."""
 
-    def __init__(self, data: dict):
+    def __init__(self, data: dict, primary: str = ""):
+        """`primary` is which shop this catalogue is read against.
+
+        Passed in rather than read out of the price file, because where you
+        shop is a preference and belongs in config.json with the rest of them.
+        The file used to carry its own `primary_store` and the two disagreed --
+        the file said New World, the config said PAK'nSAVE -- so anything that
+        asked the file got a confident answer about a shop nobody uses. That is
+        not a bug you find by reading either file; you find it when a freshness
+        figure says 0 checked with thirteen real prices in the next column.
+
+        Falling back to the first listed store keeps a bare Catalogue({...})
+        usable in tests and one-off scripts. It is a default, not a setting.
+        """
         self.data = data or {}
         self.currency = self.data.get("currency", "NZD")
         self.stores: list[str] = list(self.data.get("stores") or [])
-        self.primary: str = self.data.get("primary_store") or (
-            self.stores[0] if self.stores else "")
+        self.primary: str = primary or (self.stores[0] if self.stores else "")
         self.items: dict[str, dict] = self.data.get("items") or {}
 
         # Longest alias first, so "spring onion" wins over "onion" and

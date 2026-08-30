@@ -261,7 +261,10 @@ def freshness(data: dict, store: str = "") -> dict:
     `every` keeps the old whole-file count for anything that wants it.
     """
     items = (data.get("items") or {}).values()
-    store = store or str(data.get("primary_store") or "")
+    # No fallback to the file: where you shop is config.json's to say, and
+    # a price file that answered the question was how this reported 0
+    # checked for a shop nobody uses. No store named means the whole file.
+    store = str(store or "")
     every = sum(len(spec.get("prices") or {}) for spec in items)
 
     if store:

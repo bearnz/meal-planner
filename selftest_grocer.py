@@ -310,7 +310,7 @@ def _verified(check):
     from mealplan import pricing
 
     data = {
-        "currency": "NZD", "primary_store": "S", "stores": ["S"],
+        "currency": "NZD", "stores": ["S"],
         "items": {
             "beef mince": {"aliases": [], "unit": "g",
                            "prices": {"S": {"price": 20.0, "per": 1000,
@@ -397,7 +397,6 @@ def _freshness_is_about_your_shop(check):
     from mealplan import pricesrc
 
     data = {
-        "primary_store": "A",
         "items": {
             "one": {"prices": {"A": {"price": 1, "checked": "2026-08-30"},
                                "B": {"price": 1}, "C": {"price": 1}}},
@@ -421,5 +420,27 @@ def _freshness_is_about_your_shop(check):
           f"{f['every']} entries across chains, {f['total']} at the one shop: "
           f"checking every price you could would have read as 33% done")
 
-    check("no store named falls back to the file's own primary",
-          pricesrc.freshness(data)["store"] == "A")
+    # No fallback to the price file any more: where you shop is config.json's
+    # to say. Asking with no store means the whole file, not somebody's guess
+    # at which shop you meant.
+    allof = pricesrc.freshness(data)
+    check("no store named counts the whole file rather than guessing one",
+          allof["store"] == "" and allof["total"] == 6,
+          f"{allof['store']!r}, {allof['total']}")
+
+    # One source of truth for where you shop. The shipped price file used to
+    # carry its own primary_store saying New World while config.json said
+    # PAK'nSAVE, and everything that asked the file got a confident answer
+    # about a shop nobody uses. Re-adding the field puts that back.
+    from mealplan import pricing, store as _store
+
+    shipped = _store.load_prices()
+    check("the price file does not say where you shop",
+          "primary_store" not in shipped,
+          "that belongs in config.json; two copies is how they disagree")
+
+    cat = pricing.Catalogue(shipped, "Woolworths")
+    check("the catalogue takes its store from the caller",
+          cat.primary == "Woolworths", cat.primary)
+    check("...falling back to the first listed store, not to the file",
+          pricing.Catalogue({"stores": ["X", "Y"]}).primary == "X")

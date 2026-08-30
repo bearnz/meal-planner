@@ -67,7 +67,8 @@ def cmd_scores() -> int:
 
 def _catalogue():
     data = store.load_prices()
-    return data, pricing.Catalogue(data)
+    shop = str(store.load_config().get("primary_store") or "")
+    return data, pricing.Catalogue(data, shop)
 
 
 def cmd_price(args) -> int:

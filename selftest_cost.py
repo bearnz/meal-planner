@@ -190,7 +190,7 @@ def _savings(check, cat):
     # because the data got better. What it is about is find_savings, so it
     # brings its own prices and stops caring what the file happens to hold.
     cat = pricing.Catalogue({
-        "currency": "NZD", "primary_store": "New World",
+        "currency": "NZD",
         "stores": ["New World", "PAK'nSAVE", "Woolworths"],
         "items": {
             "lamb shoulder": {"aliases": [], "unit": "g", "prices": {

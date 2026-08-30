@@ -30,6 +30,7 @@ def run(check):
     _freshness_is_about_your_shop(check)
     _yield(check)
     _buy_note(check)
+    _cli_is_wired(check)
 
 
 def _sizes(check):
@@ -521,3 +522,34 @@ def _buy_note(check):
     check("a heading gets no note", not service.buy_note("SAUCE:"))
     check("an unknown ingredient gets no note",
           not service.buy_note("2 tbsp powdered unobtainium"))
+
+
+def _cli_is_wired(check):
+    """Every command main() dispatches to actually exists.
+
+    Cheap, and it exists because an edit that replaced one command in run.py
+    silently deleted the four defined after it. Everything still imported,
+    every test still passed, and the failure only showed up by running a
+    command by hand -- the suite drives the service layer, and nothing was
+    checking that the CLI could still reach it.
+    """
+    print("\nthe command line is wired up")
+    import ast
+
+    tree = ast.parse(pathlib.Path("run.py").read_text(encoding="utf-8"))
+    defined = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    called = {n.func.id for n in ast.walk(tree)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+              and n.func.id.startswith(("cmd_", "_grocer"))}
+    missing = sorted(called - defined)
+    check("every command main() dispatches to is defined", not missing,
+          ", ".join(missing))
+
+    expected = {"cmd_sync", "cmd_plan", "cmd_scores", "cmd_price", "cmd_receipt",
+                "cmd_missing", "cmd_stale", "cmd_grocer_stores",
+                "cmd_grocer_find", "cmd_grocer_pin", "cmd_grocer_refresh"}
+    gone = sorted(expected - defined)
+    check("no command has gone missing", not gone, ", ".join(gone))
+
+
+import pathlib  # noqa: E402 - used by the check above

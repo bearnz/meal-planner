@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 365 checks over scoring, planning, costing and the forecast
+python selftest.py       # 374 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -355,6 +355,21 @@ so a full refresh is a single download, and an unchanged one is a 304 with no
 body. `--grocer-find` is the only thing that makes extra requests, and only when
 you are adding an ingredient.
 
+**What the page shows.** Two different doubts, kept apart, because one mark
+cannot say both:
+
+- **approx** &mdash; part of the recipe has no price at all (low coverage).
+- **guess** / **real** &mdash; the prices it *did* use were shipped estimates,
+  or were actually fetched from a shop.
+
+A night can be fully covered and entirely invented, which is the case the second
+mark exists for. The week's header leads with **how much of this week's cost is
+real**, weighted by money rather than by line or by night: one checked cut of
+beef is most of a dinner, and nineteen guessed spices are not. The file-level
+"13 of 209 prices checked" stays as secondary context, because it reads far
+worse than the plan actually is &mdash; most of those 209 are ingredients this
+week never touches.
+
 **On being a good guest.** Their robots.txt allows this (`Allow: /`) and their
 terms prohibit only unauthorised access and disrupting the service. That makes
 it permitted, not free: this is a small New Zealand operation and the price
@@ -382,7 +397,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 365 checks, all passing
+python selftest.py                        # 374 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole

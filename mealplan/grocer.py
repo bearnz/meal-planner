@@ -332,6 +332,43 @@ def hours_since_refresh(data: dict) -> float:
     return (datetime.now(timezone.utc) - then).total_seconds() / 3600.0
 
 
+# "ea" is what grocer.nz calls a countable thing and "each" is what prices.json
+# calls it. Same unit, two spellings, and treating them as different silently
+# refuses to price eggs.
+_UNIT_ALIASES = {"ea": "each", "each": "each", "g": "g", "ml": "ml"}
+
+
+def _reconcile_units(spec: dict, price: float, per: float,
+                     unit: str) -> tuple[float, float, str, str]:
+    """Get a fetched price into the units this item is costed in.
+
+    Returns (price, per, unit, refusal) -- a non-empty refusal means do not
+    write it. The interesting case is a shop that sells by weight something the
+    recipes count: chicken thighs are $15.99/kg on the shelf and "4 chicken
+    thighs" in a recipe. prices.json already carries `g_per_unit` for exactly
+    these, so the conversion is *authored* rather than guessed -- which is the
+    only reason it is done at all. Without that field the answer is a refusal,
+    because inventing a weight for one thigh is inventing the price of the meal.
+    """
+    want = _UNIT_ALIASES.get(str(spec.get("unit") or unit).lower(), "")
+    have = _UNIT_ALIASES.get(unit.lower(), "")
+    if not want or not have:
+        return price, per, unit, f"unit {spec.get('unit')!r} is not one this reads"
+    if want == have:
+        return price, per, want, ""
+
+    if want == "each" and have in ("g", "ml"):
+        size = float(spec.get(f"{have}_per_unit", 0) or 0)
+        if size <= 0:
+            return price, per, unit, (
+                f"sold per {have}, counted per each, and no {have}_per_unit to "
+                f"convert with")
+        # price/per is the price of one gram; one item weighs `size` of them.
+        return round(price / per * size, 4), 1.0, "each", ""
+
+    return price, per, unit, f"source is per {have}, file says {want}"
+
+
 def refresh(data: dict, store_id: int, storename: str,
             force: bool = False) -> dict[str, Any]:
     """Update every pinned price from one 60 KB download.
@@ -358,9 +395,15 @@ def refresh(data: dict, store_id: int, storename: str,
     # and a freshly pinned item is answered with 304 and never priced at all --
     # it stays unpriced until grocer.nz happens to change the file, which is a
     # feature that silently does nothing on exactly the run you cared about.
+    # "Has no price" is the wrong test and cost this two goes to find. Almost
+    # every pin already has a price -- the shipped estimate -- so asking whether
+    # one exists says yes, the ETag goes out, and a freshly pinned item is
+    # answered 304 and keeps the guess it was pinned to replace. What matters is
+    # whether this store has ever actually been asked about it, which is exactly
+    # what `checked` records.
     unpriced = [i for i in pins
                 if not ((data["items"][i].get("prices") or {})
-                        .get(storename, {}).get("price"))]
+                        .get(storename, {}).get("checked"))]
     # A different store is a different price list, so the ETag from the old one
     # says nothing about this one -- and every price already in the file was
     # fetched somewhere else.
@@ -390,12 +433,9 @@ def refresh(data: dict, store_id: int, storename: str,
                            f"{info.get('size')!r})")
             continue
         spec = data["items"][item]
-        # The unit has to agree with what the rest of the file says this item is
-        # measured in, or a per-ml price lands in a per-g column and is out by a
-        # factor of nothing-obvious.
-        want = str(spec.get("unit") or unit)
-        if unit != want:
-            skipped.append(f"{item} (source is per {unit}, file says {want})")
+        price, per, unit, why = _reconcile_units(spec, price, per, unit)
+        if why:
+            skipped.append(f"{item} ({why})")
             continue
         pricesrc.set_price(data, item, storename, price, per)
         note = f"{item}: ${price:.2f} per {per:g}{unit}"

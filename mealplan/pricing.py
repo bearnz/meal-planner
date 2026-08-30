@@ -132,6 +132,7 @@ class Line:
     staple: bool = False
     free: bool = False         # a staple under its allowance
     priced: bool = False
+    verified: bool = False     # priced from a real price, not a shipped guess
     why_unpriced: str = ""
 
 
@@ -355,6 +356,18 @@ class Catalogue:
         price = float(special["price"]) if special else float(entry.get("price", 0))
         return price / per, special
 
+    def is_verified(self, key: str, store: str) -> bool:
+        """Whether this price was ever actually checked against a shop.
+
+        `checked` is stamped by --price, --receipt and --grocer-refresh, and is
+        absent on everything the file shipped with. It is the difference between
+        a number and a guess, and until now nothing downstream could tell them
+        apart -- so a week costed entirely from invented prices looked exactly
+        like one costed from receipts.
+        """
+        entry = ((self.items.get(key) or {}).get("prices") or {}).get(store) or {}
+        return bool(entry.get("checked"))
+
     def stores_with(self, key: str) -> list[str]:
         return list(((self.items.get(key) or {}).get("prices") or {}).keys())
 
@@ -368,6 +381,18 @@ class RecipeCost:
     unpriced: list[Line] = field(default_factory=list)
     staples_free: list[str] = field(default_factory=list)
     coverage: float = 0.0        # share of priceable lines we actually priced
+    verified_total: float = 0.0  # of `total`, how much came from real prices
+
+    @property
+    def verified_share(self) -> float:
+        """How much of this number is real, by money rather than by line count.
+
+        By money on purpose. A recipe can have nineteen guessed spices and one
+        checked cut of beef and still be almost entirely right, because the beef
+        is almost all of the cost -- counting lines would call that 5% real and
+        be badly wrong about how much to trust the total.
+        """
+        return (self.verified_total / self.total) if self.total else 0.0
 
     @property
     def confident(self) -> bool:
@@ -488,7 +513,10 @@ def cost_recipe(ingredients: str, servings: int, cat: Catalogue,
 
         line.cost = chargeable * unit_price
         line.priced = True
+        line.verified = cat.is_verified(key, store)
         out.total += line.cost
+        if line.verified:
+            out.verified_total += line.cost
 
     out.coverage = (1.0 - len(out.unpriced) / priceable) if priceable else 0.0
     out.per_portion = out.total / out.servings

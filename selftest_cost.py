@@ -183,6 +183,33 @@ def _costing(check, cat):
 
 def _savings(check, cat):
     print("\nspecials elsewhere")
+    # Its own catalogue rather than the shipped one. This used to read
+    # prices.json, and that worked only while every price in it was invented:
+    # the moment real ones arrived, set_price correctly dropped the invented
+    # specials sitting beside them and this went to zero -- a test failing
+    # because the data got better. What it is about is find_savings, so it
+    # brings its own prices and stops caring what the file happens to hold.
+    cat = pricing.Catalogue({
+        "currency": "NZD", "primary_store": "New World",
+        "stores": ["New World", "PAK'nSAVE", "Woolworths"],
+        "items": {
+            "lamb shoulder": {"aliases": [], "unit": "g", "prices": {
+                "New World": {"price": 20.0, "per": 1000},
+                "PAK'nSAVE": {"price": 18.0, "per": 1000,
+                              "special": {"price": 13.0, "until": "2099-01-01"}}}},
+            "beef mince": {"aliases": [], "unit": "g", "prices": {
+                "New World": {"price": 20.0, "per": 1000},
+                "Woolworths": {"price": 19.5, "per": 1000,
+                               "special": {"price": 14.0, "until": "2099-01-01"}}}},
+            "chicken thigh": {"aliases": [], "unit": "each", "g_per_unit": 110,
+                              "prices": {
+                                  "New World": {"price": 3.0, "per": 1},
+                                  "PAK'nSAVE": {"price": 2.90, "per": 1}}},
+            "onion": {"aliases": ["onions"], "unit": "each", "g_per_unit": 150,
+                      "prices": {"New World": {"price": 0.50, "per": 1}}},
+            "lemon": {"aliases": ["lemons"], "unit": "each", "g_per_unit": 100,
+                      "prices": {"New World": {"price": 0.80, "per": 1}}},
+        }})
     week = ["1kg lamb shoulder\n2 onions", "500g beef mince\n1 onion",
             "6 chicken thighs\n2 lemons"]
     sav = pricing.find_savings(week, cat, "New World")
@@ -275,13 +302,22 @@ def run_sources(check):
     # the first cut asserted against a fixed price, and a real --price run on
     # that same item made the test fail for the one reason it should not care
     # about.
-    entry = data["items"]["beef mince"]["prices"]["PAK'nSAVE"]
+    # Whichever item the file has *not* checked yet, rather than a named
+    # one. This said "beef mince", which was safe until beef mince became
+    # one of the prices actually fetched from a shop -- re-checking an
+    # already checked price cannot raise the count, so the test failed for
+    # the one reason its own comment says it should not care about.
+    item = next((k for k, v in data["items"].items()
+                 if ((v.get("prices") or {}).get("PAK'nSAVE") or {}).get("price")
+                 and not ((v.get("prices") or {}).get("PAK'nSAVE") or {}).get("checked")),
+                "beef mince")
+    entry = data["items"][item]["prices"]["PAK'nSAVE"]
     novel = round(float(entry.get("price", 0)) + 3.33, 2)
-    changed = pricesrc.set_price(data, "beef mince", "PAK'nSAVE", novel, 1000)
+    changed = pricesrc.set_price(data, item, "PAK'nSAVE", novel, 1000)
     check("setting a price reports that it changed", changed)
     check("setting the same price again reports no change",
-          not pricesrc.set_price(data, "beef mince", "PAK'nSAVE", novel, 1000))
-    entry = data["items"]["beef mince"]["prices"]["PAK'nSAVE"]
+          not pricesrc.set_price(data, item, "PAK'nSAVE", novel, 1000))
+    entry = data["items"][item]["prices"]["PAK'nSAVE"]
     check("the new price is stored", entry["price"] == novel and entry["per"] == 1000)
     check("it is stamped as checked today",
           entry.get("checked") == date.today().isoformat(), str(entry.get("checked")))
@@ -295,8 +331,7 @@ def run_sources(check):
 
     stale = pricesrc.stale_items(data)
     check("a just-checked price is not stale",
-          ("beef mince", "PAK'nSAVE", "") not in stale
-          and not any(i == "beef mince" and s == "PAK'nSAVE" for i, s, _ in stale))
+          not any(i == item and s == "PAK'nSAVE" for i, s, _ in stale))
     check("the shipped estimates are all reported unchecked",
           len(stale) == after["total"] - after["checked"],
           f"{len(stale)} vs {after['total'] - after['checked']}")

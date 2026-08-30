@@ -443,6 +443,11 @@ def money_summary(plan: dict, config: dict) -> dict[str, Any]:
         ],
         "total_saving": round(sum(s.saved for s in savings), 2),
         "freshness": pricesrc.freshness(cat.data),
+        # Where the shelf prices came from, if anywhere. The page shows this as
+        # attribution, which is the condition the data comes on rather than a
+        # nicety -- so it is carried in the payload and not left to the template
+        # to know about.
+        "source": cat.data.get("grocer") or {},
     }
 
 

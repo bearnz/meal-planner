@@ -151,6 +151,14 @@
         <code>python run.py --receipt receipt.txt --apply</code>.
       </p>
     {% endif %}
+    {% if m.source %}
+      <p class="note tiny attribution">
+        Shelf prices for {{ m.source.store or 'your store' }} come from
+        <a href="{{ m.source.url }}" rel="noopener">{{ m.source.source }}</a>,
+        used for personal, non-commercial use{% if m.source.fetched %},
+        last refreshed {{ m.source.fetched[:10] }}{% endif %}.
+      </p>
+    {% endif %}
     {% if m.low_confidence or m.unpriced_days %}
       <p class="note tiny">
         {% if m.unpriced_days %}

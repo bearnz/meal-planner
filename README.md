@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 309 checks over scoring, planning, costing and the forecast
+python selftest.py       # 349 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -313,6 +313,50 @@ edited — the weights are nudges, and several small ones agreeing is what moves
 score. `python run.py --scores` prints the whole library sorted by heartiness,
 which is the fastest way to see whether a change did what you wanted.
 
+## Prices from grocer.nz
+
+Shelf prices for one store, pulled from [grocer.nz](https://grocer.nz). Needs
+`pip install pyarrow`, which nothing else here does.
+
+```bash
+python run.py --grocer-find "beef chuck" --category "Meat & Seafood"
+python run.py --grocer-pin "beef chuck" 1672
+python run.py --grocer-refresh          # the weekly job
+```
+
+**Find, then pin, then refresh** — and the split is the point. Searching their
+catalogue for "beef chuck" returns the right steak first and then four kinds of
+cat food; searching for "beef cheeks" returns beef *rump*, confidently. So a
+person picks, the choice is stored as a product id, and the weekly refresh reads
+prices **by id** with no matching in it at all. Nothing can quietly drift onto
+the wrong product three months later.
+
+**The weekly cost to them is one request of 60 KB.** grocer.nz publishes one
+Parquet file per store holding every current price — about 10,000 products —
+so a full refresh is a single download, and an unchanged one is a 304 with no
+body. `--grocer-find` is the only thing that makes extra requests, and only when
+you are adding an ingredient.
+
+**On being a good guest.** Their robots.txt allows this (`Allow: /`) and their
+terms prohibit only unauthorised access and disrupting the service. That makes
+it permitted, not free: this is a small New Zealand operation and the price
+database *is* their product, where for a supermarket it is a by-product. So the
+User-Agent says what this is and that it is personal and non-commercial,
+`robots_allows()` gates every request and fails closed, `MIN_REFRESH_HOURS`
+refuses to re-fetch more often than daily, and the attribution is written into
+`prices.json` and shown on the plan page. If you are going to use this beyond
+one household, ask them first: `info@grocer.nz`.
+
+**The one number to be suspicious of** is the pack size. A blank size means the
+product is sold loose and priced *per kilogram*; anything else is the price of
+that pack. Get it backwards and a $28.99/kg chuck steak becomes $28.99 for the
+whole dinner. `--grocer-pin` refuses to pin an id it has not seen the pack size
+for, rather than assuming.
+
+**Club prices are deliberately not taken.** They need a card this project knows
+nothing about, and quoting one makes the week look cheaper than the till will be.
+Specials are taken, because anyone can have them.
+
 ## Where this is up to
 
 Running against a real 111-recipe Paprika library. To pick it up:
@@ -320,7 +364,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 309 checks, all passing
+python selftest.py                        # 349 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole
@@ -400,12 +444,9 @@ worth remembering: the synthetic library is clean, and a real one is not.
    after a restart. Any other action supersedes the banner, and a save that
    changes nothing produces none.
 
-5. **`prices.json` is hand-written in a compact style and written back
-   expanded.** `--price` and `--receipt` save through `json.dumps(indent=2)`,
-   which puts every alias and every price object on its own line — so the first
-   write reformats the whole file into a ~1700-line diff, once, and it is stable
-   after that. Nothing breaks; it is only ugly in review. Worth a compact
-   serialiser if the file is going to keep being edited by hand as well.
+5. ~~`prices.json` reformats itself on the first write.~~ Done — it was
+   expanded once, on its own commit, and is stable now. Worth a compact
+   serialiser only if the file goes back to being edited by hand.
 
 6. **Smaller things:** the seasonality table is ~65 items and a starting point
    rather than an authority; some recipes state servings in units of their own
@@ -426,6 +467,7 @@ selftest_cost.py  checks for parsing, units, staples, costing and specials
 selftest_undo.py  checks for the preferences save/undo path, via the routes
 selftest_library.py checks for the shapes a real Paprika library turned out to have
 selftest_speed.py checks that a re-plan does not redo work it already did
+selftest_grocer.py checks the grocer.nz price source, all responses stubbed
 prices.json       the price catalogue - ESTIMATES, see the notes inside
 seed_demo.py      fill the cache with that library to try the app
 config.json       everything tunable

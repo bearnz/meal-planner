@@ -459,17 +459,57 @@ def is_eligible(s: Scored, config: dict) -> bool:
     return is_dinner(s, config) and not s.excluded_by
 
 
+def _lower(values) -> set[str]:
+    return {str(v).strip().lower() for v in (values or []) if str(v).strip()}
+
+
 def is_dinner(s: Scored, config: dict) -> bool:
     """Filter out anything that is plainly not a dinner.
 
     Category-based, because that is the one bit of curation Paprika libraries
-    reliably have. A recipe with no categories at all is kept -- an uncategorised
-    library should still plan, and excluding on absence would empty it.
+    reliably have. A recipe with no categories at all is kept -- an
+    uncategorised library should still plan, and excluding on absence would
+    empty it.
+
+    There are two shapes of library and they need different rules, which is why
+    there are three settings rather than one.
+
+    A **meal-type** library files a recipe under what it *is*: Dinner, Dessert,
+    Breakfast. There `exclude_categories` and its subset test are right -- drop
+    it only if every category it has is an excluded one, so something filed
+    under both "Dinner" and "Baking" survives.
+
+    A **faceted** library files a recipe under everything it is *like*: cuisine,
+    protein, method, vibe. There the subset test is dead on arrival, because
+    almost nothing is tagged exclusively with the facets you want rid of -- a
+    tzatziki tagged Greek/Sauce/Side/Vege is not a subset of anything sane. So:
+
+      `not_a_meal_categories` is a **veto**. One match and it is not dinner,
+      however many other facets it carries. "Side" is the whole rule in a
+      faceted library: a side is a side no matter how good it is.
+
+      `component_categories` are facets that are only a meal with something in
+      them -- Bread, Pastry, Baking. A pizza dough and a smash cheeseburger are
+      both tagged Bread, and what separates them is that one of them has a
+      protein. So a component is dinner only if it also carries one of
+      `main_ingredient_categories`.
+
+    All three default to off, so a library that needs none of this is untouched.
     """
-    excluded = {c.strip().lower() for c in config.get("exclude_categories", [])}
-    if not excluded or not s.category_names:
+    names = _lower(s.category_names)
+    if not names:
         return True
-    names = {n.strip().lower() for n in s.category_names}
-    # Only drop it if *every* category it has is an excluded one; a recipe
-    # filed under both "Dinner" and "Baking" is still dinner.
-    return not names.issubset(excluded)
+
+    if names & _lower(config.get("not_a_meal_categories")):
+        return False
+
+    components = _lower(config.get("component_categories"))
+    if components and (names & components):
+        mains = _lower(config.get("main_ingredient_categories"))
+        if mains and not (names & mains):
+            return False
+
+    excluded = _lower(config.get("exclude_categories"))
+    if excluded and names.issubset(excluded):
+        return False
+    return True

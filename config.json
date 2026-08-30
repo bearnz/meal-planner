@@ -44,11 +44,34 @@
     "Breakfast",
     "Dessert",
     "Drinks",
-    "Baking",
     "Snacks",
-    "Sides",
     "Lunch"
   ],
+  "not_a_meal_categories": [
+    "Side"
+  ],
+  "component_categories": [
+    "Bread",
+    "Pastry",
+    "Baking"
+  ],
+  "main_ingredient_categories": [
+    "Beef",
+    "Chicken",
+    "Fish",
+    "Lamb",
+    "Pork",
+    "Vege"
+  ],
+  "category_effort": {
+    "Effort": 0.82,
+    "Easy": 0.18,
+    "Quick": 0.08
+  },
+  "category_heartiness": {
+    "Heavy": 0.92,
+    "Light": 0.15
+  },
   "heartiness_overrides": {},
   "effort_overrides": {},
   "avoid_ingredients": [],

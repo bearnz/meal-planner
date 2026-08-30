@@ -87,7 +87,14 @@
       </div>
       <div>
         <strong>${{ '%.2f' | format(m.week_for_household) }}</strong>
-        <span class="money-label">the week, for {{ m.people }}</span>
+        {# Says which nights it covers, not "the week", whenever it is not all
+           of them -- the figure is a sum over the days that could be priced,
+           and calling a four-night total "the week" understates a food budget
+           by whatever the other three cost. #}
+        <span class="money-label">
+          {% if m.unpriced_days %}{{ m.priced_days }} of {{ m.days }} nights{% else %}the week{% endif %},
+          for {{ m.people }}
+        </span>
       </div>
       <div>
         <strong>{{ m.store }}</strong>
@@ -144,10 +151,20 @@
         <code>python run.py --receipt receipt.txt --apply</code>.
       </p>
     {% endif %}
-    {% if m.low_confidence %}
+    {% if m.low_confidence or m.unpriced_days %}
       <p class="note tiny">
-        {{ m.low_confidence }} of 7 nights had ingredients that could not be
-        priced &mdash; those costs are marked <em>approx</em>.
+        {% if m.unpriced_days %}
+          {{ m.unpriced_days }} of {{ m.days }} nights could not be costed at all
+          and are left out of the totals above &mdash; too few of their
+          ingredients are in the price list for a figure to mean anything. Adding
+          those ingredients with
+          <code>python run.py --price "beef rump cap" 24.99 --per 1000</code>
+          brings them in.
+        {% endif %}
+        {% if m.low_confidence %}
+          {{ m.low_confidence }} more had a few ingredients missing &mdash; those
+          costs are marked <em>approx</em>.
+        {% endif %}
       </p>
     {% endif %}
   </section>
@@ -233,11 +250,26 @@
     {% endif %}
 
     <footer class="day-foot">
-      {% if d.cost and d.cost.per_portion %}
+      {% if d.cost and d.cost.usable and d.cost.per_portion %}
         <span class="cost {% if not d.cost.confident %}rough{% endif %}"
               title="{% if d.cost.confident %}Estimated from prices.json{% else %}Only {{ (d.cost.coverage * 100) | round | int }}% of ingredients could be priced{% endif %}">
           ${{ '%.2f' | format(d.cost.per_portion) }}<span class="per">/portion</span>
           {%- if not d.cost.confident %} <span class="rough-mark">approx</span>{% endif %}
+        </span>
+      {% elif d.cost and d.cost.unpriced %}
+        {# Deliberately no figure. See RecipeCost.usable: a number built from a
+           third of the lines is not an approximation of this meal's price, it
+           is the exact price of a different and much shorter shopping list. #}
+        <span class="cost unknown"
+              title="Only {{ (d.cost.coverage * 100) | round | int }}% of these ingredients are in the price list, so any figure here would be mostly guesswork">
+          not priced
+          <span class="per">
+            {%- if d.cost.major_unpriced -%}
+              no price for {{ d.cost.major_unpriced[:2] | join(', ') }}
+            {%- else -%}
+              {{ d.cost.unpriced | length }} unknown
+            {%- endif -%}
+          </span>
         </span>
       {% endif %}
       <span class="meta">

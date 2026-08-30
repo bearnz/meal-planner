@@ -252,6 +252,11 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
    because an estimate missing its most expensive line is the failure worth
    seeing rather than the one worth hiding. */
 .cost.rough { color: var(--ink-soft); }
+/* "not priced" is not a price, so it does not get a price's weight. Quieter
+   than an approximate figure, which is itself quieter than a solid one. */
+.cost.unknown {
+  font-weight: 400; font-style: italic; color: var(--ink-soft);
+}
 .rough-mark {
   font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em;
   border: 1px solid var(--line); border-radius: 4px; padding: 0 0.2rem;

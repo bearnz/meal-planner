@@ -30,9 +30,22 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .quantity import QUANTITY_RE, VULGAR, WORD_NUMBERS, _parse_number
+from .quantity import (QUANTITY_RE, VULGAR, WORD_NUMBERS, _parse_number,
+                       is_section_header)
 
 # unit -> (kind, how many base units). Base units are grams and millilitres.
+# Below this share of a recipe's lines priced, no figure is reported at all.
+# See RecipeCost.usable for why this is a third state rather than a caveat.
+SHOW_MIN_COVERAGE = 0.5
+
+# An unpriced line carrying at least this much of something is on its own
+# enough to withhold the figure, whatever the line count says. Coverage counts
+# lines, and a line is a terrible unit of money: a beef birria with 1.3 kg of
+# unpriced chuck in it and eleven priced spices scores 55% covered and comes out
+# at 59 cents a portion. Half a kilo is about where an ingredient stops being a
+# seasoning and starts being the thing you are actually buying.
+MAJOR_UNPRICED_GRAMS = 400.0
+
 UNITS: dict[str, tuple[str, float]] = {
     "g": ("mass", 1.0), "gram": ("mass", 1.0), "grams": ("mass", 1.0),
     "gm": ("mass", 1.0), "gms": ("mass", 1.0),
@@ -53,6 +66,16 @@ UNITS: dict[str, tuple[str, float]] = {
     "teaspoons": ("volume", 5.0),
 }
 
+# A second amount in the other measurement system, written after a slash:
+# "600g / 1.4lb", "1 kg/ 2 lb", "500ml / 2 cups". Longest unit names first so
+# "litre" is tried before "l"; the trailing \b is what keeps "l" off "large".
+_ALT_AMOUNT_RE = re.compile(
+    r"^\s*/\s*[\d][\d.,\s/]*\s*(?:"
+    + "|".join(re.escape(u) for u in sorted(UNITS, key=len, reverse=True))
+    + r")\b\.?",
+    re.I,
+)
+
 # Words that look like units and are really shapes of packaging or vagueness.
 # They stop a line being priced by amount; some are rescued by the catalogue
 # (a "tin" of tomatoes has a known size), the rest are honestly unpriceable.
@@ -65,7 +88,23 @@ PACK_WORDS = {"tin", "tins", "can", "cans", "jar", "jars", "packet", "packets",
 
 VAGUE_WORDS = {"pinch", "splash", "drizzle", "handful", "dash", "knob",
                "glug", "squeeze", "few", "little", "good", "generous",
-               "large", "small", "medium", "extra"}
+               "extra"}
+
+# Size adjectives are not vague, they are *descriptions of a thing you can
+# count*. "1 large onion" is one onion, and an onion has a known weight in the
+# catalogue -- so refusing to price it, which is what filing these under
+# VAGUE_WORDS did, threw away a line it could have costed to within a third.
+# That is the wrong trade: a third out on one onion is noise beside dropping
+# the onion entirely, and "onion" was the single most common unpriced
+# ingredient in a real library, blocking nineteen recipes.
+#
+# The factors are what the words mean rather than a hedge. Left at a flat 1.0
+# they would still beat refusing, and there is no reason to be that coarse when
+# a greengrocer's small and large differ by about this much.
+SIZE_WORDS: dict[str, float] = {
+    "small": 0.75, "medium": 1.0, "large": 1.3, "extra large": 1.6,
+    "baby": 0.5, "jumbo": 1.6,
+}
 
 # Trailing noise on an ingredient line. Everything after a comma is nearly
 # always preparation ("finely diced", "plus extra to serve") rather than a
@@ -96,6 +135,36 @@ class Line:
     why_unpriced: str = ""
 
 
+def _short_name(line: "Line") -> str:
+    """A few words naming what a line is, for showing to a person.
+
+    `item` is what the matcher works on and is usually already short. When it
+    came out empty the fallback is the raw line, and a raw line can be most of a
+    sentence -- so it is cut at the first comma or bracket and capped, which is
+    where recipe writers put the notes rather than the ingredient.
+    """
+    # item, then item_raw, then the whole line. `item` is empty more often than
+    # it looks -- the prep-word stripper can eat a name down to nothing -- and
+    # `item_raw` is the same line one step earlier, which is where the words
+    # still are.
+    text = (line.item or "").strip() or (line.item_raw or "").strip() \
+        or (line.raw or "")
+
+    # Brackets first, then the comma. Cutting at the first bracket instead
+    # looks equivalent and throws the name away on "3 1/2 cups (350g) shredded
+    # cheese", where the bracket comes first and holds only the amount -- which
+    # is what left the page saying "no price for chuck beef," with a trailing
+    # comma and nothing after it.
+    text = re.sub(r"\([^)]*\)", " ", text)
+    # ...and an opening bracket with no partner, which is what an upstream
+    # truncation leaves behind: "beef rump cap / picanha (more names: sirloin".
+    text = re.sub(r"\([^)]*$", " ", text).split(",")[0]
+    text = re.sub(r"\s+", " ", text).strip(" .-")
+    if len(text) > 28:
+        text = text[:28].rstrip(" ,-/")
+    return text
+
+
 def _strip_prep(text: str) -> str:
     text = text.split(",")[0]
     text = _PREP_RE.sub("", text)
@@ -107,7 +176,7 @@ def parse_line(raw: str) -> Line:
     """Split an ingredient line into amount, unit and ingredient name."""
     line = Line(raw=raw)
     text = (raw or "").strip()
-    if not text or text.endswith(":"):
+    if is_section_header(text):
         line.why_unpriced = "heading"
         return line
 
@@ -140,6 +209,13 @@ def parse_line(raw: str) -> Line:
         word = um.group(1).lower()
         if word in UNITS:
             unit, rest = word, um.group(2)
+        elif word in SIZE_WORDS:
+            # Not a unit at all -- a size on the thing being counted. Consume
+            # it, scale the count, and leave the unit empty so the line reads
+            # as "1.3 onions", which the catalogue can price by the each.
+            if amount is not None:
+                amount *= SIZE_WORDS[word]
+            rest = um.group(2)
         elif word in PACK_WORDS or word in VAGUE_WORDS:
             unit, rest = word, um.group(2)
 
@@ -159,6 +235,19 @@ def parse_line(raw: str) -> Line:
     # "lour" -- three ingredients that then matched nothing and were quietly
     # dropped from the cost.
     rest = re.sub(r"^\s*(?:of|x)\s+", "", rest, flags=re.I).strip()
+
+    # "600g / 1.4lb beef chuck" -- the same amount said twice for two
+    # audiences. The metric half is already in `amount`; what is left is the
+    # imperial half glued to the front of the ingredient, and it made the item
+    # name "/ 1.4lb beef chuck", which matches nothing in any catalogue.
+    #
+    # This is most of a real library rather than an edge case: RecipeTin Eats
+    # writes every quantity in both units, and it is two thirds of the one this
+    # was tested against. The visible symptom was every beef, pork and chicken
+    # cut in the library coming back "not in the price list" while the spices
+    # beside them priced perfectly -- which is exactly the shape that makes a
+    # recipe look cheap rather than unpriced.
+    rest = _ALT_AMOUNT_RE.sub("", rest, count=1).strip()
 
     # Pack words at the front describe the container, not the contents:
     # "tin chopped tomatoes" is tomatoes.
@@ -288,6 +377,52 @@ class RecipeCost:
         one unpriced is a much worse estimate than one of twenty with the same.
         """
         return self.coverage >= 0.8
+
+    @property
+    def major_unpriced(self) -> list[str]:
+        """Unpriced lines big enough to decide the answer on their own.
+
+        Named short enough to print. These end up on the page as the reason a
+        night has no price, and a recipe line is not a name -- "3 1/2 cups
+        (350g) shredded Colby, Monterey Jack or Oaxaca cheese (if you can get
+        it) (Note 6)" is what one of them says in full.
+        """
+        out = []
+        for line in self.unpriced:
+            kind_factor = UNITS.get((line.unit or "").lower())
+            if not kind_factor or line.amount is None:
+                continue
+            if line.amount * kind_factor[1] >= MAJOR_UNPRICED_GRAMS:
+                name = _short_name(line)
+                if name:
+                    out.append(name)
+        return out
+
+    @property
+    def usable(self) -> bool:
+        """Whether there is a number here at all, as opposed to a caveat.
+
+        There are three states, not two, and the third one arrived with a real
+        library. A roast whose only priceable line was the salt came out at
+        **$0.00 a portion** for two kilos of picanha, and the page dutifully
+        printed it with "approx" beside it. But "approx" claims the number is
+        roughly right, and zero is not roughly the price of a beef roast -- it
+        is the price of the things we happened to know, which is a different
+        quantity wearing the same units.
+
+        So: at or above `confident` it is shown plainly, between the two it is
+        shown as approximate, and below `SHOW_MIN_COVERAGE` there is no number,
+        because the honest answer is that we cannot say. The threshold is a half
+        deliberately: at exactly half the lines priced the figure is already
+        more missing than the reader would ever guess from looking at it.
+
+        Coverage alone is not enough, which is why `major_unpriced` also has a
+        veto. Coverage counts lines and money does not live in lines -- a recipe
+        can be 55% covered because eleven spices priced and the 1.3 kg of beef
+        did not, and there is no share of *lines* that makes that figure mean
+        anything.
+        """
+        return self.coverage >= SHOW_MIN_COVERAGE and not self.major_unpriced
 
 
 def cost_recipe(ingredients: str, servings: int, cat: Catalogue,

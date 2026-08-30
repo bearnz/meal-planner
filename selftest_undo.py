@@ -21,7 +21,7 @@ from pathlib import Path
 def run(check):
     print("\npreferences save and undo")
 
-    from mealplan import service, store, web
+    from mealplan import service, store, weather, web
 
     real = {
         "CONFIG_PATH": store.CONFIG_PATH,
@@ -30,6 +30,16 @@ def run(check):
         "UNDO_PATH": store.UNDO_PATH,
         "CACHE_PATH": store.CACHE_PATH,
     }
+    # Saving a preference re-plans, and re-planning asks Open-Meteo for a
+    # forecast -- so without this every check below is one network round trip
+    # and a question about *undo* fails when the weather service hiccups. It
+    # did exactly that once: a single 500 on "saving preferences redirects",
+    # clean on the next four runs. The one deliberate live call lives in
+    # selftest.py's test_live_weather, which is where a network failure should
+    # be reported.
+    real_forecast = service.weather.forecast
+    service.weather.forecast = _fixed_forecast(weather)
+
     tmp = Path(tempfile.mkdtemp())
     try:
         config = json.loads(real["CONFIG_PATH"].read_text(encoding="utf-8"))
@@ -47,7 +57,29 @@ def run(check):
     finally:
         for k, v in real.items():
             setattr(store, k, v)
+        service.weather.forecast = real_forecast
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _fixed_forecast(weather):
+    """Ten days of unremarkable weather, so the plan is about the preferences.
+
+    Mild and dry on purpose: a week of freezing rain would push every choice
+    towards the heartiest thing in the library and quietly narrow what these
+    checks are actually exercising.
+    """
+    from datetime import date, timedelta
+
+    def forecast(lat, lon, days=10):
+        today = date.today()
+        return [
+            weather.DayWeather(
+                day=today + timedelta(days=i), temp_max=17.0, temp_min=11.0,
+                precip_mm=0.0, precip_chance=10, wind_kmh=9.0, code=1,
+            )
+            for i in range(days)
+        ]
+    return forecast
 
 
 def _checks(check, service, store, web):

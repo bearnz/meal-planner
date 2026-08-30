@@ -8,6 +8,7 @@
     python run.py --price "beef mince" 15.49 --per 1000 --store "PAK'nSAVE"
     python run.py --receipt receipt.txt --store "PAK'nSAVE"   (preview)
     python run.py --receipt receipt.txt --store "PAK'nSAVE" --apply
+    python run.py --missing  which unpriced ingredients block the most recipes
     python run.py --stale    prices that have never been checked, or are old
 """
 
@@ -27,8 +28,11 @@ def cmd_sync() -> int:
 
     print("Fetching from Paprika...")
     payload = service.sync_recipes(progress=progress)
+    s = payload.get("sync", {})
+    detail = (f"{s.get('fetched', 0)} fetched, {s.get('reused', 0)} unchanged, "
+              f"{s.get('trashed', 0)} in the trash")
     print(f"\rCached {len(payload['recipes'])} recipes "
-          f"({len(payload['categories'])} categories).      ")
+          f"({len(payload['categories'])} categories) - {detail}.      ")
     return 0
 
 
@@ -112,6 +116,56 @@ def cmd_receipt(args) -> int:
     return 0
 
 
+def cmd_missing(args) -> int:
+    """Which missing prices would buy the most, over the whole library.
+
+    Ranked by how many *recipes* each one blocks rather than how many lines it
+    appears on, because the thing being bought here is priceable dinners. One
+    entry for beef chuck unlocks a whole night; ten entries for spices that
+    appear once each unlock nothing, since they were never what the estimate
+    was missing.
+    """
+    from collections import Counter
+
+    config = store.load_config()
+    cat = service.catalogue()
+    if not cat.items:
+        print("\n  No prices.json to compare against.\n")
+        return 1
+
+    library = service.load_library(config)
+    blocking: Counter[str] = Counter()
+    major: Counter[str] = Counter()
+    unusable = 0
+
+    for s in library:
+        made = service.quantity.servings_factor(s.recipe.servings, 1)[1]
+        c = pricing.cost_recipe(s.recipe.ingredients, made or 4, cat,
+                                str(config.get("primary_store") or ""))
+        if not c.usable:
+            unusable += 1
+        seen = set()
+        for line in c.unpriced:
+            item = (line.item or line.raw).strip().lower()[:40]
+            if item and item not in seen:
+                seen.add(item)
+                blocking[item] += 1
+        for item in c.major_unpriced:
+            major[item.strip().lower()[:40]] += 1
+
+    print(f"\n  {unusable} of {len(library)} dinners cannot be costed at all.\n")
+    if major:
+        print("  Missing a MAIN ingredient (these block a whole recipe each):\n")
+        for item, n in major.most_common(20):
+            print(f"    {n:3} recipe(s)   {item}")
+    print("\n  Most common unpriced ingredients overall:\n")
+    for item, n in blocking.most_common(30):
+        print(f"    {n:3} recipe(s)   {item}")
+    print('\n  Add one with:  python run.py --price "beef chuck" 18.99 '
+          '--per 1000\n')
+    return 0
+
+
 def cmd_stale(args) -> int:
     """Which prices are real and which are still the shipped estimates."""
     data, _ = _catalogue()
@@ -161,6 +215,8 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true",
                     help="with --receipt, actually write the prices")
     ap.add_argument("--store", default="", help="which supermarket")
+    ap.add_argument("--missing", action="store_true",
+                    help="which unpriced ingredients block the most recipes")
     ap.add_argument("--stale", action="store_true",
                     help="list prices that are unchecked or old")
     args = ap.parse_args()
@@ -178,6 +234,8 @@ def main() -> int:
             return cmd_price(args)
         if args.receipt:
             return cmd_receipt(args)
+        if args.missing:
+            return cmd_missing(args)
         if args.stale:
             return cmd_stale(args)
     except Exception as exc:  # noqa: BLE001 - a CLI should say what broke

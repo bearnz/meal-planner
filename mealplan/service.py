@@ -24,23 +24,41 @@ class NoRecipes(RuntimeError):
 # --- recipes -----------------------------------------------------------------
 
 def sync_recipes(progress: Callable[[int, int], None] | None = None) -> dict:
-    """Pull the library from Paprika and cache it. Returns the cache payload."""
+    """Pull the library from Paprika and cache it. Returns the cache payload.
+
+    The previous cache is handed to the client so unchanged recipes are not
+    re-fetched.
+
+    The cache is a faithful mirror of the library, trash included, and the
+    trash is filtered on the way *out* in `score_all`. Filtering it on the way
+    in is the obvious version and it quietly defeats the incremental sync: a
+    trashed recipe left out of the cache has no hash to compare against, so all
+    twelve of them were re-downloaded on every single sync, forever.
+    """
     store.load_env()
-    recipes, categories = paprika.fetch_all(progress=progress)
+    old = {r["uid"]: r for r in (store.load_cache().get("recipes") or [])
+           if r.get("uid")}
+    recipes, categories, stats = paprika.fetch_all(progress=progress, cached=old)
     payload = {
         "fetched": datetime.now().isoformat(timespec="seconds"),
         "categories": categories,
-        "recipes": [r.to_json() for r in recipes if not r.in_trash],
+        "recipes": [r.to_json() for r in recipes],
+        "sync": dict(stats, trashed=sum(1 for r in recipes if r.in_trash)),
     }
     store.save_cache(payload)
     return payload
 
 
 def score_all(config: dict, month: int | None = None) -> list[Scored]:
-    """Every cached recipe, scored. No filtering -- the preferences page needs
-    to see what it is about to exclude, not only what survived."""
+    """Every cached recipe, scored.
+
+    No filtering beyond the trash -- the preferences page needs to see what it
+    is about to exclude, not only what survived. The trash is not a preference:
+    it is a recipe the library says has been thrown away, and the cache holds it
+    only so the sync can compare hashes against it.
+    """
     cache = store.load_cache()
-    raw = cache.get("recipes") or []
+    raw = [d for d in (cache.get("recipes") or []) if not d.get("in_trash")]
     if not raw:
         raise NoRecipes(
             "No recipes cached yet. Hit Sync (or run: python run.py --sync) to "
@@ -187,12 +205,32 @@ def cost_of(recipe_json: dict, servings: int, store_name: str = "") -> dict:
         "servings": c.servings,
         "coverage": round(c.coverage, 2),
         "confident": c.confident,
+        "usable": c.usable,
+        # Named, so a night with no figure can say what is missing rather than
+        # only that something is. "the beef" is actionable; "3 ingredients" is
+        # a shrug.
+        "major_unpriced": c.major_unpriced,
         "unpriced": [{"text": l.raw, "why": l.why_unpriced} for l in c.unpriced],
         "free_staples": sorted(set(c.staples_free)),
         "currency": cat.currency,
         "estimated": bool(cat.data.get("estimated")),
         "store": store_name or cat.primary,
     }
+
+
+def _servings_label(servings: str) -> str:
+    """Paprika's servings text, with its own label taken off the front.
+
+    The page already writes "serves" before this, and a real library has
+    "Servings 4", "Serves 4" and "6 to 8 servings" in it -- so printed raw it
+    reads "serves Servings 4". Only the wrapper words go; anything the recipe
+    says beyond a number is kept, because "6 to 8" and "4 generously" are worth
+    seeing and are not ours to round.
+    """
+    text = re.sub(r"^\s*(?:servings?|serves)\b[:\s]*", "", servings or "",
+                  flags=re.I)
+    text = re.sub(r"\s*\bservings?\b\s*$", "", text, flags=re.I)
+    return text.strip() or servings.strip()
 
 
 def _servings_scale(servings: str, household: int) -> str:
@@ -235,7 +273,7 @@ def _day_payload(choice, forecast_known: bool, household: int = 0,
         "name": r.name,
         "source": r.source or "",
         "source_url": r.source_url or "",
-        "servings": r.servings or "",
+        "servings": _servings_label(r.servings or ""),
         "total_time": r.total_time or "",
         "minutes": s.minutes,
         "hands_on": s.hands_on,
@@ -368,7 +406,11 @@ def money_summary(plan: dict, config: dict) -> dict[str, Any]:
                    for d in plan["days"] if d.get("uid") in by_uid]
 
     costs = [d.get("cost") or {} for d in plan["days"]]
-    priced = [c for c in costs if c.get("per_portion")]
+    # Only days with a number worth showing feed the week's figures. A day we
+    # could price a third of is not a cheap day, and averaging it in makes the
+    # whole week look cheaper than it is -- which is the one direction a food
+    # budget must not be wrong in.
+    priced = [c for c in costs if c.get("usable") and c.get("per_portion")]
     people = int(config.get("household_size", 2) or 2)
 
     savings = pricing.find_savings(
@@ -389,7 +431,10 @@ def money_summary(plan: dict, config: dict) -> dict[str, Any]:
             sum(float(c.get("per_portion", 0)) for c in priced) * people, 2),
         "people": people,
         "priced_days": len(priced),
-        "low_confidence": sum(1 for c in costs if c and not c.get("confident")),
+        "days": len(costs),
+        "unpriced_days": sum(1 for c in costs if c and not c.get("usable")),
+        "low_confidence": sum(1 for c in costs if c and c.get("usable")
+                              and not c.get("confident")),
         "savings": [
             {"item": s.item, "store": s.store, "normal": round(s.normal, 2),
              "special": round(s.special, 2), "saved": round(s.saved, 2),

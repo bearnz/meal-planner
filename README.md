@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 225 checks over scoring, planning, costing and the forecast
+python selftest.py       # 300 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -315,25 +315,66 @@ which is the fastest way to see whether a change did what you wanted.
 
 ## Where this is up to
 
-Working end to end against the demo library. To pick it up:
+Running against a real 111-recipe Paprika library. To pick it up:
 
 ```bash
-python seed_demo.py && python run.py      # see it work with invented recipes
-python selftest.py                        # 225 checks, all passing
+python run.py --sync                      # pull your library (needs .env)
+python run.py                             # or seed_demo.py first, to try it dry
+python selftest.py                        # 300 checks, all passing
 ```
+
+**What the first real library changed.** Every one of these passed the whole
+test suite and still produced a visibly wrong answer, which is the failure mode
+worth remembering: the synthetic library is clean, and a real one is not.
+`selftest_library.py` now holds a check for each.
+
+- **The sync client was pointed at the wrong API version.** v2 refuses HTTP
+  Basic outright and its login endpoint answers `Unrecognized client.` — it
+  validates the account, then rejects the client, which is Paprika gating v2 to
+  their own apps. v1 serves the same library to an honest client. The one thing
+  not done about this is the obvious one: no spoofed User-Agent. If v1 is
+  retired, the route is Paprika's own File > Export.
+- **A re-sync re-downloaded everything.** The recipe index carries a per-recipe
+  hash, so it now fetches only what changed — 111 requests became 0, and about
+  two minutes became one second. Trashed recipes stay *in* the cache for the
+  same reason: dropped, they had no hash to compare and were re-fetched forever.
+- **Section headings were counted as ingredients and steps.** RecipeTin Eats
+  writes `SAUCE`, `TO SERVE:`, `SATAY SEASONING` — 125 such lines here, all
+  headings, none an ingredient. A 30-minute gyros scored 0.97 of 1.0 for effort
+  and was being served on Saturdays.
+- **Dual metric/imperial amounts hid the meat.** `600g / 1.4lb beef chuck` left
+  the ingredient named `/ 1.4lb beef chuck`, so every cut of meat in the library
+  matched nothing while the spices beside it priced perfectly — which makes a
+  recipe look *cheap* rather than unpriced.
+- **`1 large onion` was refused as vague.** Size words are descriptions of
+  countable things, not vague amounts, and onion was the single most common
+  unpriced ingredient — 19 recipes.
+- **The category rules were built for the wrong shape of library.** This one
+  files a recipe under everything it is *like* (cuisine, protein, method, vibe)
+  rather than what it *is*, so the old subset test never fired and the planner
+  served Pizza Dough and Tzatziki Sauce as dinners. See `is_dinner` for the
+  three settings and why a veto is needed alongside the subset rule.
+- **The library already knew what this file spends 400 lines inferring.** Its
+  `Vibe` tree — Easy, Effort, Heavy, Light — is the owner stating both scoring
+  axes by hand, and `difficulty` is empty on all 99 recipes. Those tags now
+  anchor the scores. They disagreed: a gyros tagged `Easy` was the highest-effort
+  recipe in the library.
+- **A 2 kg picanha costed $0.00 a portion** and the page printed it with
+  "approx" beside it. There are now three states, not two — see `RecipeCost.usable`.
 
 **Not yet done, in the order it probably matters:**
 
-1. **Nothing has been run against a real Paprika library.** The sync client is
-   written and unexercised — `.env` has never been filled in here. Expect the
-   first real sync to turn up ingredient lines the parser has not met, and
-   category names that need adding to `exclude_categories`. `python run.py
-   --scores` and the coverage figures on the plan page are how you find them.
+1. **Every price is an estimate.** 0 of 206 verified, and 31 of 91 dinners
+   cannot be costed at all. `python run.py --missing` ranks what to add by how
+   many recipes each unlocks — it is the fastest way to spend an hour on this.
+   `--price` and `--receipt` are the way in; `--stale` lists what is still a
+   shipped guess. Until that share climbs the money figures compare recipes
+   against each other; they do not budget.
 
-2. **Every price is an estimate.** 0 of 206 verified. `--price` and `--receipt`
-   are the way in; `--stale` lists what still needs doing. Until that share
-   climbs, the money figures are for comparing recipes against each other, not
-   for budgeting.
+2. **`day_types` has still only been judged against the demo library.** The
+   effort ceilings and targets are now being applied to a real spread of 91
+   recipes and have not been retuned since. `python run.py --scores` prints the
+   distribution.
 
 3. **Live price fetching is deliberately not built.** Foodstuffs' robots.txt
    disallows the search and promotions paths this would need — see the note at
@@ -343,17 +384,26 @@ python selftest.py                        # 225 checks, all passing
    and would reuse most of `parse_receipt`.
 
 4. ~~The preferences checkboxes save with no confirmation.~~ **Done.** A save
-   now leaves a banner saying what changed and what it cost
-   ("Excluding mushroom, prawn removed 4 recipes (13 → 9)"), with Undo and
+   now leaves a banner saying what changed and what it cost, with Undo and
    Dismiss. The snapshot is on disk, so an accidental save is still reversible
    after a restart. Any other action supersedes the banner, and a save that
    changes nothing produces none.
 
-5. **Smaller things:** the seasonality table is ~65 items and a starting point
-   rather than an authority; the effort ceilings and targets in `day_types` have
-   only ever been judged against a 13-recipe demo library, so expect to retune
-   them once a real one is loaded; and the shopping list still does
-   not merge quantities across recipes, which is the one deliberate gap.
+5. **`prices.json` is hand-written in a compact style and written back
+   expanded.** `--price` and `--receipt` save through `json.dumps(indent=2)`,
+   which puts every alias and every price object on its own line — so the first
+   write reformats the whole file into a ~1700-line diff, once, and it is stable
+   after that. Nothing breaks; it is only ugly in review. Worth a compact
+   serialiser if the file is going to keep being edited by hand as well.
+
+6. **Smaller things:** the seasonality table is ~65 items and a starting point
+   rather than an authority; some recipes state servings in units of their own
+   ("Servings 22" for a taco recipe), which divides that recipe's cost per
+   portion by 22 — the number is shown rather than corrected, because a party
+   recipe that genuinely serves 22 looks identical; a dozen recipes carry their
+   directions twice (`ABBREVIATED RECIPE` then `FULL RECIPE`), which inflates
+   the step count; and the shopping list still does not merge quantities across
+   recipes, which is the one deliberate gap.
 
 ## Layout
 
@@ -363,6 +413,7 @@ selftest.py       offline checks; also the synthetic library
 selftest_extra.py checks for scaling, aversions, methods and seasons
 selftest_cost.py  checks for parsing, units, staples, costing and specials
 selftest_undo.py  checks for the preferences save/undo path, via the routes
+selftest_library.py checks for the shapes a real Paprika library turned out to have
 prices.json       the price catalogue - ESTIMATES, see the notes inside
 seed_demo.py      fill the cache with that library to try the app
 config.json       everything tunable

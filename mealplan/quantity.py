@@ -219,3 +219,36 @@ def servings_factor(servings: str, people: int) -> tuple[float, int]:
     if made <= 0:
         return 1.0, 0
     return people / made, made
+
+
+def is_section_header(line: str) -> bool:
+    """Is this line a heading rather than an ingredient or a step?
+
+    Two shapes, and the second is why this is a function rather than the
+    one-line colon test it replaced in two separate modules.
+
+    A heading ending in a colon is the Paprika convention -- "For the sauce:" --
+    and catches five lines in a real 99-recipe library. **All caps** catches a
+    hundred and twenty-five, because that is what recipe sites actually publish:
+    "SAUCE", "TO SERVE:", "SATAY SEASONING", "HOT CHIPS", "GARNISHES". Every
+    all-caps line in that library was a heading and not one of them was an
+    ingredient, which is what makes this safe rather than merely plausible.
+
+    It lives here because both callers are parsing ingredient text and both got
+    it wrong the same way. In `scoring` the counts feed effort, and a recipe
+    organised into five labelled sections is not five ingredients longer or five
+    steps harder than the same recipe written flat -- RecipeTin Eats sections
+    everything and is two thirds of that library, so uncorrected this made the
+    most carefully structured recipes look like the hardest: a 30-minute gyros
+    with 20 minutes of prep scored 0.97 out of 1.0 and was served on Saturdays.
+    In `pricing` a heading is a line nothing can put a price on, so leaving it
+    in reported "GARNISHES" to the reader as an ingredient it could not cost,
+    and docked the recipe's coverage for it.
+    """
+    s = (line or "").strip()
+    if not s:
+        return True
+    if s.rstrip().endswith(":"):
+        return True
+    letters = [c for c in s if c.isalpha()]
+    return bool(letters) and not any(c.islower() for c in letters)

@@ -321,6 +321,10 @@
     "brandy": { "unit": "ml",
       "prices": { "New World": { "per": 700, "price": 45.00 } } },
 
+    "water": { "aliases": ["cold water", "boiling water", "warm water",
+                           "hot water", "iced water", "tap water"],
+      "unit": "ml", "staple": true, "free_allowance": 100000,
+      "prices": {} },
     "salt": { "aliases": ["sea salt", "table salt", "flaky salt"],
       "unit": "g", "g_per_ml": 1.2, "staple": true, "free_allowance": 100,
       "prices": { "New World": { "per": 1000, "price": 3.50 },

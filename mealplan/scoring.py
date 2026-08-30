@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 from . import preferences, seasons
 from .paprika import Recipe
+from .quantity import is_section_header
 
 # --- heartiness ---------------------------------------------------------------
 # Positive pushes towards stew-in-a-bowl; negative towards salad-on-a-plate.
@@ -100,6 +101,49 @@ DIFFICULTY_MAP = {
     "medium": 0.5, "moderate": 0.5, "average": 0.5,
     "hard": 0.88, "difficult": 0.88, "challenging": 0.9, "advanced": 0.9,
 }
+
+# How much of a score an author's own tag is worth, against everything this
+# file worked out for itself. Same split as DIFFICULTY_MAP above, for the same
+# reason: a tag is a person who has cooked the thing telling you what it is.
+ANCHOR_WEIGHT = 0.6
+
+
+def apply_category_anchor(
+    value: float, names: list[str], anchors: dict | None,
+) -> tuple[float, list[str]]:
+    """Pull a computed score towards what the library's own tags claim.
+
+    Paprika's `difficulty` field is the obvious authored signal and this project
+    already leans on it -- but a real library can leave it empty on all 99
+    recipes and still be carefully curated, because the curation went into
+    *categories* instead. A library with a "Vibe" tree of Easy / Effort / Heavy /
+    Light is its owner stating the two axes this file spends four hundred lines
+    inferring, and they should win where they disagree.
+
+    They do disagree. A 30-minute gyros tagged "Easy" was scoring 0.85 of 1.0 --
+    the hardest recipe in the library -- because it lists 21 ingredients, most
+    of them spices going into one bowl. Counting ingredients is a decent proxy
+    for work right up until it meets a recipe like that, and no amount of
+    reweighting fixes it from the outside. The cook already knew.
+
+    Only tags that name the axis directly belong in these maps. "Comfort" is
+    the tag to leave out however tempting it looks: it is a mood, it is on a
+    third of that library, and anchoring 30 recipes onto one heartiness would
+    flatten the variety the planner is choosing between.
+    """
+    if not anchors or not names:
+        return value, []
+    lower = {n.strip().lower(): n for n in names if n and n.strip()}
+    hits = [(float(v), lower[k.strip().lower()])
+            for k, v in anchors.items() if k.strip().lower() in lower]
+    if not hits:
+        return value, []
+    # The strongest claim wins rather than the average: a recipe tagged both
+    # Easy and Effort is a recipe whose owner has said something interesting,
+    # and splitting the difference says nothing at all.
+    target, label = max(hits, key=lambda h: abs(h[0] - value))
+    blended = ANCHOR_WEIGHT * target + (1.0 - ANCHOR_WEIGHT) * value
+    return blended, [f"you tagged it {label}"]
 
 # Terms that mean "this needs planning ahead", which is effort a clock misses.
 FAFF_TERMS: dict[str, float] = {
@@ -189,14 +233,13 @@ def _method_score(haystack: str, table: dict[str, float]) -> float:
 
 def count_steps(directions: str) -> int:
     lines = [ln.strip() for ln in (directions or "").splitlines() if ln.strip()]
-    return len(lines) or (1 if (directions or "").strip() else 0)
+    steps = [ln for ln in lines if not is_section_header(ln)]
+    return len(steps) or (1 if (directions or "").strip() else 0)
 
 
 def count_ingredients(ingredients: str) -> int:
     lines = [ln.strip() for ln in (ingredients or "").splitlines() if ln.strip()]
-    # Paprika lets you write bare section headings ending in a colon; those are
-    # not ingredients, and a recipe organised into sections is not a longer shop.
-    return len([ln for ln in lines if not ln.rstrip().endswith(":")])
+    return len([ln for ln in lines if not is_section_header(ln)])
 
 
 @dataclass
@@ -364,6 +407,12 @@ def score(r: Recipe, categories: dict[str, str], config: dict,
 
     heart, hr = score_heartiness(r, names)
     effort, er = score_effort(r, names)
+
+    heart, h2 = apply_category_anchor(
+        heart, names, config.get("category_heartiness"))
+    effort, e2 = apply_category_anchor(
+        effort, names, config.get("category_effort"))
+    hr, er = hr + h2, er + e2
 
     heart = float(config.get("heartiness_overrides", {}).get(r.name, heart))
     effort = float(config.get("effort_overrides", {}).get(r.name, effort))

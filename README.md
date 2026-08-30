@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 436 checks over scoring, planning, costing and the forecast
+python selftest.py       # 578 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -201,6 +201,30 @@ each is listed, and the night's cost is marked *approx* with its coverage. A
 cost estimate quietly missing its most expensive line is the one failure that
 looks exactly like a correct answer.
 
+**A stated weight beats a cup of a solid.** RecipeTin Eats writes "3 1/2 cups
+(350g) shredded cheese" and "1 1/2 cups / 150g mozzarella", and where a line
+gives both, the weight is what gets costed. A cup of a solid is not a quantity,
+it is a quantity plus how hard you pressed — shredded cheese runs 90 to 115g a
+cup depending on the grater, packed leaves are worse — and the gram figure has
+none of that in it. It also spares the catalogue a density for every shredded
+and leafy thing in it, a number that only ever existed to undo the conversion.
+
+Only that direction. "600g / 1.4lb beef chuck" is the same amount said twice for
+two audiences; the metric half is already in hand and there is nothing to
+prefer. And both halves get scaled together — see below.
+
+**An ingredient is its name, not its footnote.** Recipe writers put substitutes
+in brackets, and a substitution note is made of real ingredient names, so a
+matcher reading the whole line finds the wrong one. "3 1/2 tbsp (50g) unsalted
+butter (or 2 1/2 tbsp olive oil)" was priced as olive oil, "10-12 eggs (reserve
+one yolk for glazing pastry)" as puff pastry, and "cumin powder (sub coriander)"
+as a bunch of fresh herbs. The name comes first now and the notes are the
+fallback, which they have to remain: the prep-stripper can eat a name down to
+nothing, and then the notes are all there is.
+
+Between them these two, plus a round of aliases and densities, moved the library
+from 49 recipes costed plainly to 74, and from 24 with no figure at all to 11.
+
 ### Getting real prices in
 
 The shipped prices are estimates. Two ways to replace them with what you were
@@ -272,6 +296,16 @@ magnitude. Grams and millilitres go to whole numbers — nobody weighs out 187.5
 Kilos and litres keep two decimals — rounding 0.75kg the same way gives 1kg, a
 third more lamb. Everything else is a count, rounds to a quarter and comes back
 as a fraction, because half an onion is a real instruction.
+
+**Where a line says the amount twice, both halves scale.** Half of "3 1/2 cups
+(350g) shredded cheese" is "1 3/4 cups (175g)", not "1 3/4 cups (350g)" — that
+line contradicts itself on a page read standing in a shop. It stopped being
+cosmetic when the costing started preferring the stated weight: preferring an
+amount and then not scaling it puts a whole batch of cheese in a quarter batch
+of tacos. The pattern is anchored to just after the unit, which is where recipe
+writers put it and is what keeps "(Note 6)", "(1 small bunch)" and "(~5cm/2″
+piece)" out of it. One definition, in `quantity.restatement`, used by the scaler
+and the costing both — they have to agree about what a restatement is.
 
 Anything not confidently parsed is **passed through untouched and flagged**:
 "salt and pepper to taste" and "a pinch of saffron" are left alone, and the page
@@ -528,7 +562,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 436 checks, all passing
+python selftest.py                        # 578 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole
@@ -554,6 +588,19 @@ worth remembering: the synthetic library is clean, and a real one is not.
   the ingredient named `/ 1.4lb beef chuck`, so every cut of meat in the library
   matched nothing while the spices beside it priced perfectly — which makes a
   recipe look *cheap* rather than unpriced.
+- **A substitution note was priced instead of the ingredient.** Brackets on a
+  RecipeTin Eats line hold what to use *instead*, and a note is made of real
+  ingredient names, so a matcher reading the whole line finds the wrong one:
+  butter priced as olive oil, eggs as puff pastry, cumin powder as fresh herbs,
+  salt as pasta. All plausible, all cheaper or dearer by a little, none of it
+  visible from the page. See `Catalogue.key_for`.
+- **A cup of a solid was being converted with a density nobody had.** Half the
+  American measures in the library carry the weight beside them --
+  `3 1/2 cups (350g)` -- and the parser was reading the cups and throwing the
+  grams away, then refusing the line for want of a density. Two of the seven
+  nights in the current plan had no price for exactly this reason. The weight
+  is taken now, and the scaler had to learn to scale it: preferring an amount
+  and then leaving it at full batch is a worse bug than the one it fixed.
 - **`1 large onion` was refused as vague.** Size words are descriptions of
   countable things, not vague amounts, and onion was the single most common
   unpriced ingredient — 19 recipes.
@@ -583,8 +630,10 @@ worth remembering: the synthetic library is clean, and a real one is not.
 
 **Not yet done, in the order it probably matters:**
 
-1. **Every price is an estimate.** 0 of 206 verified, and 31 of 91 dinners
-   cannot be costed at all. `python run.py --missing` ranks what to add by how
+1. **Every price is an estimate.** 16 of 108 verified at PAK'nSAVE, and 11 of
+   111 recipes still cannot be costed at all -- down from 24, after a pass that
+   taught the parser to prefer a stated weight and the matcher to read a name
+   before its footnote. `python run.py --missing` ranks what to add by how
    many recipes each unlocks — it is the fastest way to spend an hour on this.
    `--price` and `--receipt` are the way in; `--stale` lists what is still a
    shipped guess. Until that share climbs the money figures compare recipes

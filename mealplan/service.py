@@ -775,7 +775,7 @@ def _shape_line(text: str, scaled: bool, original: str,
         out["group"] = out["name"] = text.strip()
         return out
 
-    key = cat.match(line.item_raw or line.item) or cat.match(line.item)
+    key = cat.key_for(line)
     spec = (cat.items.get(key) or {}) if key else {}
     amount, _why = cat.to_item_units(line, key) if key else (None, "")
 

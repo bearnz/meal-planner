@@ -68,6 +68,47 @@ WORD_RE = re.compile(
     rf"^\s*(?P<word>{'|'.join(WORD_NUMBERS)})\b(?P<rest>.*)$", re.I
 )
 
+# Units a restatement can be in. Deliberately narrow: a second amount is there
+# to serve the other measuring system, so it is metric, imperial, or a cup.
+RESTATE_UNITS = METRIC_UNITS | {"cup", "cups", "tbsp", "tablespoon",
+                                "tablespoons", "tsp", "teaspoon", "teaspoons",
+                                "gm", "gms", "ounce", "ounces", "pound"}
+
+# The same amount written a second time, right after the unit: "3 1/2 cups
+# (350g)", "1 1/2 cups / 150g", "600g / 1.4lb". Recipe writers put it exactly
+# there and nowhere else, which is the whole reason this can be anchored --
+# hunting for a number anywhere on the line finds "(Note 6)", "(1 small bunch)"
+# and "5cm/2 inch piece" instead.
+RESTATED_RE = re.compile(
+    rf"""^\s*(?P<first>[a-zA-Z]+)\.?
+    (?P<lead>\s*(?:/\s*)?\(?\s*)
+    (?P<amount>(?:{_NUM}\s*)?(?:{_FRAC}|[{_VULGAR}])|{_NUM})
+    \s*(?P<unit>[a-zA-Z]+)\b\.?
+    (?P<tail>\s*\)?)""",
+    re.X,
+)
+
+
+def restatement(rest: str):
+    """A second copy of the amount, matched against the text after a quantity.
+
+    `rest` still carries the first unit on the front ("cups (350g) shredded
+    Colby"), so the pattern steps over it -- and only when it is a real unit.
+    Without that guard "1 onion (150g)" reads as a restatement and the onion
+    stops being an onion.
+
+    Both units are checked against a narrow list, which is what keeps "(Note
+    6)", "(1 small bunch, Note 3)" and "(~5cm/2 inch piece)" out.
+    """
+    m = RESTATED_RE.match(rest or "")
+    if not m:
+        return None
+    if m.group("first").lower() not in RESTATE_UNITS:
+        return None
+    if m.group("unit").lower() not in RESTATE_UNITS:
+        return None
+    return m
+
 
 def _parse_number(text: str) -> Fraction | None:
     """'1 1/2' / '1½' / '½' / '400' / '1.5' -> Fraction, or None."""
@@ -148,6 +189,30 @@ class ScaledLine:
     original: str
 
 
+def _scale_restatement(rest: str, f: Fraction) -> str:
+    """Scale the second copy of the amount, where the line gives one.
+
+    "3 1/2 cups (350g) shredded Colby" halved is not "1 3/4 cups (350g)". Left
+    alone the two halves of the line contradict each other, and the reader has
+    no way to tell which one the planner meant -- so it says both, wrongly, on
+    a shopping list that is read in a shop.
+
+    It stopped being cosmetic when the costing started *preferring* the stated
+    weight, which it does because a cup of a solid is a quantity plus how hard
+    you pressed. Preferring an amount and then not scaling it prices a whole
+    batch of cheese into a quarter batch of tacos.
+    """
+    m = restatement(rest)
+    if not m:
+        return rest
+    value = _parse_number(m.group("amount"))
+    if value is None:
+        return rest
+    scaled = format_amount(value * f, m.group("unit").lower())
+    return (rest[:m.start("amount")] + scaled
+            + rest[m.start("amount") + len(m.group("amount")):])
+
+
 def scale_line(line: str, factor: float) -> ScaledLine:
     """Scale the leading quantity on one ingredient line."""
     raw = line.rstrip()
@@ -166,6 +231,7 @@ def scale_line(line: str, factor: float) -> ScaledLine:
             rest = m.group("rest")
             unit = _first_unit(rest)
             f = Fraction(factor).limit_denominator(1000)
+            rest = _scale_restatement(rest, f)
             new_low = format_amount(low * f, unit)
             if high is not None:
                 new = f"{new_low}-{format_amount(high * f, unit)}{rest}"

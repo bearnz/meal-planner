@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from . import quantity
 from .quantity import (QUANTITY_RE, VULGAR, WORD_NUMBERS, _parse_number,
                        is_section_header)
 
@@ -75,6 +76,7 @@ _ALT_AMOUNT_RE = re.compile(
     + r")\b\.?",
     re.I,
 )
+
 
 # Words that look like units and are really shapes of packaging or vagueness.
 # They stop a line being priced by amount; some are rescued by the catalogue
@@ -233,6 +235,37 @@ def parse_line(raw: str) -> Line:
         amount = packs * float(xm.group(1))
         unit, rest = xm.group(2).lower(), xm.group(3)
 
+    # "3 1/2 cups (350g) shredded cheese", "1 1/2 cups / 150g mozzarella" --
+    # a cup measure with the weight the author actually put on the scales
+    # beside it. Take the weight.
+    #
+    # Only when the leading amount is a *volume* and the second one is a mass,
+    # which is the whole of the rule. A cup of a solid is not a quantity, it is
+    # a quantity plus how hard you pressed: shredded cheese is anywhere from 90
+    # to 115 g a cup depending on the grater, and packed leaves are worse. The
+    # gram figure has none of that in it. Going the other way -- "600g / 1.4lb
+    # beef chuck" -- there is nothing to gain, the two say the same thing, and
+    # the metric half is already in hand; that pairing is stripped as noise a
+    # few lines below.
+    #
+    # It also spares the catalogue a density for every shredded and leafy thing
+    # in it, which is a number that only ever existed to undo this conversion.
+    if UNITS.get(unit, ("", 0.0))[0] == "volume":
+        # Asked with the unit put back on the front, because that is the shape
+        # `restatement` anchors to -- and sharing it with the scaler is the
+        # point. The two have to agree about what a restatement is: one finds
+        # them to scale, the other to price, and a line scaled by one and read
+        # by the other is how a quarter batch of tacos gets a whole batch of
+        # cheese.
+        whole = unit + rest
+        m2 = quantity.restatement(whole)
+        second = UNITS.get(m2.group("unit").lower(), ("", 0.0)) if m2 else ("", 0.0)
+        if m2 and second[0] == "mass":
+            value = quantity._parse_number(m2.group("amount"))
+            if value is not None:
+                amount = float(value) * second[1]
+                unit, rest = "g", whole[m2.end():]
+
     line.amount = amount
     line.unit = unit
 
@@ -293,11 +326,19 @@ class Catalogue:
         # Longest alias first, so "spring onion" wins over "onion" and
         # "sweet potato" over "potato". Matching the short one would be
         # silently, plausibly wrong -- and cheaper, which hides it.
+        #
+        # Ties broken alphabetically rather than left to whatever order the
+        # file happens to list its items in. Two aliases the same length on
+        # different items is not hypothetical -- "guajillo" and "chillies" are
+        # both eight -- and resolving that by dict order means the answer moves
+        # when someone reorders the price file, which is not a change anybody
+        # would connect to a chilli being priced fresh instead of dried. Where
+        # it matters the fix is a longer alias, not a luckier order.
         self._aliases: list[tuple[str, str]] = []
         for key, spec in self.items.items():
             for alias in [key] + list(spec.get("aliases") or []):
                 self._aliases.append((alias.lower(), key))
-        self._aliases.sort(key=lambda kv: -len(kv[0]))
+        self._aliases.sort(key=lambda kv: (-len(kv[0]), kv[0]))
 
     def match(self, text: str) -> str:
         hay = f" {text.lower()} "
@@ -306,6 +347,26 @@ class Catalogue:
                          + r"e?s?\b", hay):
                 return key
         return ""
+
+    def key_for(self, line: "Line") -> str:
+        """Which catalogue item a parsed line is: the name first, notes last.
+
+        `item` is the ingredient with the recipe writer's asides taken off;
+        `item_raw` is the same text with them still attached. Asking the
+        stripped name first matters because those asides are overwhelmingly
+        about what to use *instead*, and matching them picks the substitute
+        over the ingredient. Read the wrong way round, "3 1/2 tbsp (50g)
+        unsalted butter (or 2 1/2 tbsp olive oil)" is a line about olive oil,
+        "10-12 eggs (reserve one yolk for glazing pastry)" is a line about puff
+        pastry, and "cumin powder (sub coriander)" is a bunch of fresh herbs.
+
+        Each of those was priced as the wrong thing, silently and plausibly,
+        because a substitution note is made of real ingredient names. Falling
+        back to the raw text still matters: the stripper can eat a name down to
+        nothing ("3 1/2 cups (350g) shredded Colby..." starts with a bracket),
+        and then the notes are all there is.
+        """
+        return self.match(line.item) or self.match(line.item_raw)
 
     # --- unit handling --------------------------------------------------------
 
@@ -484,7 +545,7 @@ def cost_recipe(ingredients: str, servings: int, cat: Catalogue,
         priceable += 1
         out.lines.append(line)
 
-        key = cat.match(line.item_raw or line.item) or cat.match(line.item)
+        key = cat.key_for(line)
         if not key:
             line.why_unpriced = line.why_unpriced or "not in the price list"
             out.unpriced.append(line)
@@ -500,7 +561,15 @@ def cost_recipe(ingredients: str, servings: int, cat: Catalogue,
             # free rather than unpriced. Counting it as unpriced instead was
             # dragging coverage down over exactly the lines that were never
             # going to cost anything.
-            if spec.get("staple") and line.amount is None:
+            #
+            # A *vague* amount of one is the same case wearing a number. "1
+            # pinch cooking salt" and "a knob of butter" have an amount and no
+            # size, and the only thing that could ever be said about them is
+            # that they are under any allowance worth the name -- nobody
+            # measures a pinch and nobody buys one. Left unpriced it counted
+            # against the recipe exactly as a missing kilo of beef would.
+            vague = line.unit in VAGUE_WORDS
+            if spec.get("staple") and (line.amount is None or vague):
                 line.staple = line.free = line.priced = True
                 out.staples_free.append(key)
                 continue
@@ -574,7 +643,7 @@ def find_savings(ingredients_by_recipe: list[str], cat: Catalogue,
             if not raw.strip() or raw.strip().endswith(":"):
                 continue
             line = parse_line(raw)
-            key = cat.match(line.item_raw or line.item) or cat.match(line.item)
+            key = cat.key_for(line)
             if not key:
                 continue
             amount, reason = cat.to_item_units(line, key)

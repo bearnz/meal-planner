@@ -41,6 +41,7 @@ def run(check):
     _availability(check)
     _mapped_by_hand(check)
     _sides(check)
+    _refresh_button(check)
 
 
 def _sizes(check):
@@ -1129,3 +1130,236 @@ def _sides(check):
     check("every one of them answers to is_side",
           all(is_side(scored[d["name"]], config) for d in sides))
 
+
+def _refresh_button(check):
+    """The plan page can fetch shelf prices, and says honestly when it cannot.
+
+    The interval that makes this button interesting is grocer.nz's, not this
+    project's: they publish one file per store about daily, so inside twenty
+    hours there is genuinely no new number to fetch. On the command line that
+    is answered after you have typed the command, which is fine. On a page it
+    has to be answered before anybody presses, or the button's entire reply is
+    a screen that comes back looking identical.
+    """
+    print("\nrefreshing prices from the page")
+    from datetime import datetime, timedelta, timezone
+
+    from mealplan import grocer, service, web
+    from mealplan import store as st
+
+    def aged(hours, store_id=222, at="PAK'nSAVE"):
+        """A price file holding one pin, last refreshed `hours` ago."""
+        when = datetime.now(timezone.utc) - timedelta(hours=hours)
+        data = {"items": {}, "grocer": {
+            "fetched": when.isoformat(timespec="seconds"),
+            "store_id": store_id, "store": at}}
+        grocer.pin(data, "beef chuck",
+                   grocer.Product(1672, "NZ Beef Chuck Steak", "", "1kg", ""))
+        return data
+
+    config = {"primary_store": "PAK'nSAVE",
+              "grocer": {"store_id": 222, "store_name": "PAK'nSAVE Royal Oak"}}
+
+    real_load, real_write = st.load_prices, st._write_json
+    real_fetch = grocer.fetch_prices
+    written = []
+
+    def guard(path, payload):
+        # The real price file is the one thing this must not rewrite. The note
+        # file is state the test is actually about, so it goes through.
+        written.append(path)
+        if path != st.PRICES_PATH:
+            real_write(path, payload)
+
+    try:
+        st.load_prices = lambda: aged(3)
+        state = service.price_refresh_state(config)
+        check("a refresh three hours old is not offered again",
+              state["ready"] is False, str(state))
+        check("...and says how many hours until it is",
+              state["wait_hours"] == 17, str(state["wait_hours"]))
+        check("...while still counting what is pinned", state["pinned"] == 1)
+
+        st.load_prices = lambda: aged(30)
+        state = service.price_refresh_state(config)
+        check("a day-old refresh is offered", state["ready"] is True, str(state))
+        check("...with nothing left to wait for", state["wait_hours"] == 0)
+
+        # A different shop is a different file, so an interval that exists to
+        # stop the *same* file being fetched twice has nothing to say about it.
+        st.load_prices = lambda: aged(3, store_id=241)
+        state = service.price_refresh_state(config)
+        check("changing shop is its own reason to refresh, interval or not",
+              state["moved"] and state["ready"], str(state))
+
+        st.load_prices = lambda: {"items": {}, "grocer": {}}
+        check("nothing pinned means nothing to offer",
+              service.price_refresh_state(config)["ready"] is False)
+
+        # A fresh clone: pins, but the file has never been fetched. There is no
+        # age to report and the page must not try to subtract one from twenty.
+        never = aged(1)
+        never["grocer"] = {}
+        st.load_prices = lambda: never
+        state = service.price_refresh_state(config)
+        check("a file never fetched is offered, with no age to report",
+              state["ready"] and state["hours"] is None, str(state))
+        check("...and the page says so in words",
+              "never read yet" in _refresh_block(web.app.test_client()))
+
+        # --- the fetch itself, with the network and the price file stubbed ----
+        data = aged(30)
+        st.load_prices = lambda: data
+        st._write_json = guard
+        grocer.fetch_prices = lambda store_id, etag="": (
+            {1672: grocer.Price(1672, 2899, 0, 0, "")}, "TAG", False)
+
+        r = service.refresh_prices(config)
+        check("refreshing writes the price file",
+              st.PRICES_PATH in written, str(written))
+        check("...and reports it in one line a page can print",
+              r["headline"] == "1 price updated", r["headline"])
+        check("...naming the shop it actually read",
+              "Royal Oak" in r["store"], r["store"])
+        check("...and carrying the terms it is used under",
+              "grocer.nz" in r["attribution"], r["attribution"])
+        check("...with the price landed", data["items"]["beef chuck"]
+              ["prices"]["PAK'nSAVE"]["price"] == 28.99)
+
+        # Nothing updated is three different things and the status says which.
+        # Flattening them into "0 prices updated" throws away the only sentence
+        # anybody could act on.
+        st.load_prices = lambda: {"items": {}, "grocer": {}}
+        check("nothing pinned is said in words, not as a zero",
+              service.refresh_prices(config)["headline"] == "nothing pinned")
+
+        st.load_prices = lambda: aged(1)
+        written.clear()
+        check("too soon is said in words too",
+              "force" in service.refresh_prices(config)["headline"])
+        # prices.json is hand-edited and hand-formatted, and rewriting it from
+        # a parsed dict reflows every compact alias list in the file. A refusal
+        # that wrote anyway produced a four-hundred-line diff in which not one
+        # price had changed -- which is what a button pressed out of habit does
+        # to a tracked file.
+        check("...and a refused refresh does not rewrite the price file",
+              st.PRICES_PATH not in written, str(written))
+
+        # --- the page ---------------------------------------------------------
+        client = web.app.test_client()
+
+        st.load_prices = lambda: aged(3)
+        block = _refresh_block(client)
+        check("a button that cannot act is drawn as one", "disabled" in block,
+              "an enabled button whose only reply is an identical page")
+        check("...and says when it comes back", "another\n            17h" in block
+              or "another 17h" in block, block)
+
+        st.load_prices = lambda: aged(30)
+        block = _refresh_block(client)
+        check("...and is live once there is a new file to fetch",
+              block and "disabled" not in block, block)
+        # A tooltip on a labelled control is read out *instead of* the label,
+        # so a title here made a screen reader announce the explanation and
+        # never the word "Refresh".
+        tag = block[block.find("<button"):block.find("</button>")]
+        check("...and the button's own words are its label, not a tooltip",
+              "title=" not in tag and "Refresh prices" in block, tag)
+
+        st.load_prices = lambda: aged(3, store_id=241)
+        block = _refresh_block(client)
+        check("a page after changing shop offers the refresh anyway",
+              "disabled" not in block and "changed shop" in block, block)
+
+        # --- pressing it ------------------------------------------------------
+        st.load_prices = lambda: aged(30)
+        r = client.post("/prices/refresh")
+        check("the button redirects rather than rendering",
+              r.status_code == 302,
+              "a rendered POST re-fetches grocer.nz on every reload")
+        page = client.get("/").get_data(as_text=True)
+        check("...and the next page says what it did",
+              "Prices refreshed." in page and "1 price updated" in page,
+              "an outcome that does not survive the redirect is no outcome")
+
+        # Through the helper rather than through a route, because every route
+        # that clears this banner also re-plans the week, and a test is not
+        # allowed to rearrange somebody's dinners to prove a point.
+        web._clear_notices()
+        # A file unchanged since last week is the ordinary weekly outcome, and
+        # it is neither a success nor a failure: announcing "Prices refreshed"
+        # over a 304 claims credit for a download that never happened.
+        web._clear_notices()
+        grocer.fetch_prices = lambda store_id, etag="": ({}, etag, True)
+        client.post("/prices/refresh")
+        page = client.get("/").get_data(as_text=True)
+        check("an unchanged price file is not announced as a refresh",
+              "Nothing to refresh." in page and "Prices refreshed." not in page,
+              "a 304 reported as a refresh is credit for a download not made")
+        check("...and says so in the source's own words",
+              "304" in page, "the reason is the only part worth reading")
+
+        web._clear_notices()
+        check("any other action clears the banner",
+              "Prices refreshed." not in client.get("/").get_data(as_text=True),
+              "a banner outliving its action describes something else")
+        check("...and every action that changes the week calls it",
+              not _routes_missing_clear(),
+              ", ".join(_routes_missing_clear()))
+
+        # Offline is the ordinary way for this to go wrong, and it belongs on
+        # the plan rather than in place of it.
+        grocer.fetch_prices = _explode
+        st.load_prices = lambda: aged(30)
+        client.post("/prices/refresh")
+        page = client.get("/").get_data(as_text=True)
+        check("a refresh that failed says so on the plan, not instead of it",
+              "could not be refreshed" in page and 'class="week"' in page,
+              "an error page in place of the week loses the week")
+        check("...and can be dismissed",
+              "could not be refreshed" not in _after(client, "/prices/dismiss"))
+    finally:
+        st.load_prices, st._write_json = real_load, real_write
+        grocer.fetch_prices = real_fetch
+        st.clear_price_note()
+
+
+def _explode(store_id, etag=""):
+    from mealplan import grocer
+    raise grocer.GrocerError("could not reach grocer.nz")
+
+
+def _refresh_block(client):
+    """Just the refresh control, cut out of the plan page."""
+    page = client.get("/").get_data(as_text=True)
+    i = page.find('class="refresh"')
+    return page[i:i + 900] if i >= 0 else ""
+
+
+def _routes_missing_clear():
+    """Which world-changing routes forgot to clear the banners.
+
+    Read out of the source rather than driven, because driving them means
+    re-planning the week four times to check a housekeeping call. The failure
+    it guards is a new route added next to the others without the line: the
+    banner then survives into a page describing something else entirely, which
+    is how an undo button comes to point at the wrong action.
+    """
+    import ast
+
+    want = {"sync", "regenerate", "reroll", "office", "refresh_prices"}
+    tree = ast.parse(pathlib.Path("mealplan/web.py").read_text(encoding="utf-8"))
+    out = []
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef) or node.name not in want:
+            continue
+        called = {n.func.id for n in ast.walk(node)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        if "_clear_notices" not in called:
+            out.append(node.name)
+    return sorted(out)
+
+
+def _after(client, post_to, get="/"):
+    client.post(post_to)
+    return client.get(get).get_data(as_text=True)

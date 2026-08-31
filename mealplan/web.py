@@ -18,6 +18,16 @@ app = Flask(
 )
 
 
+def _clear_notices() -> None:
+    """Both banners belong to the action that made them, and to no other.
+
+    A preferences undo still offering itself after a price refresh is an undo
+    button pointing at something that is no longer the last thing you did.
+    """
+    store.clear_undo()
+    store.clear_price_note()
+
+
 def _config_or_error():
     try:
         return store.load_config(), None
@@ -50,13 +60,24 @@ def index():
         except Exception as exc:  # noqa: BLE001 - the page is the error report
             app.logger.error("generate failed: %s", traceback.format_exc())
             plan, error = None, str(exc)
+    # Read fresh on every render, like the money block above and for the same
+    # reason: a price fetched from the command line while this page sat open
+    # changes both what it costs and when the button may next run.
+    try:
+        prices = service.price_refresh_state(config)
+    except Exception:  # noqa: BLE001 - a button is not worth losing the week over
+        # Logged, not swallowed. A bare pass here hides the button and gives no
+        # reason, which reads exactly like the button was never written.
+        app.logger.error("price state failed: %s", traceback.format_exc())
+        prices = {}
     return render_template("plan.html", plan=plan, error=error, cache=cache,
-                           undo=store.load_undo())
+                           undo=store.load_undo(), prices=prices,
+                           note=store.load_price_note())
 
 
 @app.post("/sync")
 def sync():
-    store.clear_undo()
+    _clear_notices()
     try:
         service.sync_recipes()
     except Exception as exc:  # noqa: BLE001
@@ -69,7 +90,7 @@ def sync():
 
 @app.post("/regenerate")
 def regenerate():
-    store.clear_undo()
+    _clear_notices()
     config, err = _config_or_error()
     if err:
         return render_template("plan.html", plan=None, error=err, cache=None), 400
@@ -84,7 +105,7 @@ def regenerate():
 
 @app.post("/reroll/<iso_day>")
 def reroll(iso_day: str):
-    store.clear_undo()
+    _clear_notices()
     config, err = _config_or_error()
     if err:
         return jsonify({"error": err}), 400
@@ -100,7 +121,7 @@ def reroll(iso_day: str):
 
 @app.post("/office/<iso_day>")
 def office(iso_day: str):
-    store.clear_undo()
+    _clear_notices()
     config, err = _config_or_error()
     if err:
         return jsonify({"error": err}), 400
@@ -110,6 +131,46 @@ def office(iso_day: str):
         app.logger.error("office toggle failed: %s", traceback.format_exc())
         return render_template("plan.html", plan=store.load_plan(),
                                error=str(exc), cache=store.load_cache()), 500
+    return redirect(url_for("index"))
+
+
+@app.post("/prices/refresh")
+def refresh_prices():
+    """Fetch this week's shelf prices from grocer.nz.
+
+    Redirects rather than rendering, so a reload redraws the answer instead of
+    fetching it again -- the outcome is written to a note that the index picks
+    up. A failure takes the same path: being offline is the ordinary way for
+    this to go wrong, and it deserves a banner above the plan rather than an
+    error page in place of it.
+    """
+    _clear_notices()
+    config, err = _config_or_error()
+    if err:
+        return render_template("plan.html", plan=None, error=err, cache=None), 400
+    try:
+        result = service.refresh_prices(config)
+    except Exception as exc:  # noqa: BLE001 - the page is the error report
+        app.logger.error("price refresh failed: %s", traceback.format_exc())
+        store.save_price_note({"ok": False, "headline": str(exc)})
+        return redirect(url_for("index"))
+    store.save_price_note({
+        "ok": True,
+        "headline": result["headline"],
+        "store": result.get("store", ""),
+        "updated": result["counts"]["updated"],
+        # The exceptions are the part worth interrupting somebody for: a pin
+        # whose product has been delisted is broken until a person re-pins it,
+        # and no other screen in this app will ever mention it.
+        "missing": result.get("missing") or [],
+        "skipped": result.get("skipped") or [],
+    })
+    return redirect(url_for("index"))
+
+
+@app.post("/prices/dismiss")
+def dismiss_price_note():
+    store.clear_price_note()
     return redirect(url_for("index"))
 
 
@@ -173,6 +234,10 @@ def save_prefs():
     if err:
         return render_template("preferences.html", options=None, error=err), 400
 
+    # Saving preferences writes its own undo snapshot, so only the price note
+    # is stale here -- and it genuinely is: this form can change which shop the
+    # prices would come from.
+    store.clear_price_note()
     ingredients = request.form.getlist("ingredient")
     # Free text, comma separated, for anything the curated list does not cover.
     extra = request.form.get("extra", "")

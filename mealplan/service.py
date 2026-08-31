@@ -544,6 +544,120 @@ def money_summary(plan: dict, config: dict) -> dict[str, Any]:
     }
 
 
+# --- prices ------------------------------------------------------------------
+
+def price_refresh_state(config: dict) -> dict[str, Any]:
+    """What a refresh button needs to know before anybody presses it.
+
+    The field that matters is `ready`. grocer.nz publishes one file per store,
+    roughly daily, and `grocer.MIN_REFRESH_HOURS` refuses to re-fetch inside
+    twenty hours of the last one. That guard already existed and already worked
+    -- but on the command line it answers after you typed the command, which is
+    fine, and on a page it would answer after you pressed a button and watched
+    the page come back looking identical, which is not. So the state comes out
+    here and the control renders itself from it: a button that cannot do
+    anything should not look like one that can.
+
+    Refusing rather than forcing is the honest default for a button. The
+    interval is not only politeness -- inside it there is no new file to fetch,
+    so forcing spends somebody else's bandwidth writing down numbers already on
+    screen. `--force` stays on the command line, where whoever typed it has a
+    reason and had to mean it.
+
+    `moved` is the one exception, and it is a real one. A different store is a
+    different file, so an interval that exists to stop the *same* file being
+    downloaded twice has nothing to say about it. Change your shop on the
+    Preferences page an hour after a refresh and every price on the page is
+    still the old shop's; being told to come back tomorrow would be the app
+    refusing to answer the question you just asked it.
+    """
+    from . import grocer
+
+    data = store.load_prices()
+    st = data.get("grocer") or {}
+    pins = grocer.pinned(data)
+    age = grocer.hours_since_refresh(data)
+    fetched = str(st.get("fetched") or "")
+    store_id = int((config.get("grocer") or {}).get("store_id") or 0)
+    moved = bool(fetched) and int(st.get("store_id") or 0) != store_id
+    due = age >= grocer.MIN_REFRESH_HOURS or moved
+    return {
+        "pinned": len(pins),
+        "store_id": store_id,
+        "store": str(config.get("primary_store") or ""),
+        "store_name": str((config.get("grocer") or {}).get("store_name") or ""),
+        # The shop the prices in the file were actually read at, which is only
+        # interesting when it is not the one you now shop at.
+        "was": str(st.get("store") or ""),
+        "fetched": fetched,
+        "hours": round(age) if fetched else None,
+        "moved": moved,
+        "ready": bool(pins) and bool(store_id) and due,
+        "wait_hours": 0 if due else max(1, round(grocer.MIN_REFRESH_HOURS - age)),
+        "interval": grocer.MIN_REFRESH_HOURS,
+    }
+
+
+def refresh_prices(config: dict, force: bool = False) -> dict[str, Any]:
+    """Pull every pinned price from grocer.nz. One request, about 60 KB.
+
+    The single place that knows how to do this, so the button on the page and
+    `--grocer-refresh` cannot drift apart on which store they read, whether the
+    interval applies, or whether the file gets written.
+
+    Everything ordinary is reported rather than raised -- nothing pinned, too
+    soon, unchanged since last week -- because each of those is a sentence to
+    put on a page, not a failure. What comes back is what `grocer.refresh`
+    returns plus `counts`, `store` and a one-line `headline`: the terminal wants
+    the lists, and the page wants a sentence.
+    """
+    from . import grocer
+
+    state = price_refresh_state(config)
+    if not state["store_id"]:
+        raise ValueError("No shop is set to fetch prices from. Pick one on the "
+                         "Preferences page.")
+
+    data = store.load_prices()
+    before = dict(data.get("grocer") or {})
+    result = grocer.refresh(data, state["store_id"], state["store"],
+                            force=bool(force or state["moved"]))
+    # Only written if the fetch actually got as far as happening. The refusals
+    # -- nothing pinned, too soon -- return before touching anything, and
+    # writing anyway rewrites prices.json from scratch: it is hand-edited and
+    # hand-formatted, so a no-op press produced a four-hundred-line diff in
+    # which not one price had changed. Every path that does anything, the 304
+    # included, stamps `fetched`, so the grocer block is the tell.
+    if (data.get("grocer") or {}) != before:
+        store._write_json(store.PRICES_PATH, data)
+
+    result["counts"] = {k: len(result.get(k) or [])
+                        for k in ("updated", "missing", "skipped")}
+    result["store"] = state["store_name"] or state["store"]
+    result["headline"] = _refresh_headline(result)
+    result["attribution"] = grocer.ATTRIBUTION
+    return result
+
+
+def _refresh_headline(result: dict[str, Any]) -> str:
+    """One sentence about what just happened, for the top of the page.
+
+    Nothing updated is three different things -- nothing pinned, too soon, or
+    the file has not changed since last time -- and `status` already says which
+    in words somebody can act on, so it is passed through rather than flattened
+    into a zero.
+    """
+    n = result["counts"]["updated"]
+    if not n:
+        return str(result.get("status") or "nothing to update")
+    out = f"{n} price{'' if n == 1 else 's'} updated"
+    tail = [f"{result['counts'][k]} {word}"
+            for k, word in (("missing", "no longer stocked"),
+                            ("skipped", "left alone"))
+            if result["counts"][k]]
+    return out + (", " + " and ".join(tail) if tail else "")
+
+
 def toggle_office_day(config: dict, iso_day: str) -> dict:
     """Flip one day between office and not, then re-plan the week.
 

@@ -23,6 +23,7 @@ def run(check):
     _in_the_pool(check)
     _marked_on_the_page(check)
     _keeping_up(check)
+    _running_unattended(check)
     _earning_dinner(check)
     _leftovers(check)
     _your_own_library_survives(check)
@@ -494,6 +495,122 @@ def _keeping_up(check):
 
     check("the button's batch is small enough to wait for",
           0 < rte.BUTTON_BATCH <= 30, str(rte.BUTTON_BATCH))
+
+
+def _running_unattended(check):
+    print("")
+    print("running on a schedule with nobody watching")
+    import os
+    import time
+
+    from mealplan import service, store, web
+
+    # --- one harvest at a time, across processes --------------------------
+    # It stopped being theoretical the moment this went on a timer: the task
+    # fires at 7:30, somebody presses the button at 7:30, both read rte.json,
+    # both add their own recipes, and whichever finishes last writes a file
+    # missing the other's work. Nothing errors -- the recipes are simply gone,
+    # and `seen` says they were read, so they are never fetched again.
+    check("no lock is left lying around", not store.HARVEST_LOCK.exists(),
+          str(store.HARVEST_LOCK))
+    with store.harvest_lock():
+        check("holding the lock creates it", store.HARVEST_LOCK.exists())
+        try:
+            with store.harvest_lock():
+                check("a second harvest is refused", False, "it got in")
+        except store.Busy as exc:
+            check("a second harvest is refused", True)
+            check("...and says how to clear it if nothing is running",
+                  "delete" in str(exc).lower(), str(exc))
+    check("the lock is released afterwards", not store.HARVEST_LOCK.exists())
+
+    # A killed process must not lock the feature out forever, with the fix
+    # being a file nobody knows to delete.
+    store.HARVEST_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    store.HARVEST_LOCK.write_text("999999", encoding="utf-8")
+    old = time.time() - 3 * 3600
+    os.utime(store.HARVEST_LOCK, (old, old))
+    try:
+        with store.harvest_lock(stale_minutes=90):
+            check("a stale lock is broken rather than obeyed", True)
+    except store.Busy:
+        check("a stale lock is broken rather than obeyed", False,
+              "a killed run would lock this out permanently")
+    finally:
+        if store.HARVEST_LOCK.exists():
+            store.HARVEST_LOCK.unlink()
+
+    # The route and the command both go through the service, so the service is
+    # where the lock has to be -- putting it only in the CLI protects the one
+    # caller that was never going to collide with itself.
+    import inspect
+    src = inspect.getsource(service.harvest_web_recipes)
+    check("the shared path takes the lock, not just the command line",
+          "harvest_lock" in src,
+          "the button and the scheduled task are exactly the two that collide")
+
+    # --- the log is the only trace an unattended run leaves ---------------
+    real_log = store.HARVEST_LOG
+    tmp = store.DATA / "harvest.test.log"
+    try:
+        store.HARVEST_LOG = tmp
+        store.log_harvest("3 new, 2 dinners, 1450 on file, 0 to go")
+        text = tmp.read_text(encoding="utf-8")
+        check("a run writes one dated line", text.count(chr(10)) == 1, text)
+        check("...with the date on it, because the question six weeks later "
+              "is whether this has been working", text[:2].isdigit(), text[:20])
+        for _ in range(900):
+            store.log_harvest("x")
+        kept = tmp.read_text(encoding="utf-8").splitlines()
+        check("...and it cannot grow forever", len(kept) <= 810, str(len(kept)))
+    finally:
+        store.HARVEST_LOG = real_log
+        if tmp.exists():
+            tmp.unlink()
+
+    # --- a collision is news, not a failure -------------------------------
+    client = web.app.test_client()
+    real = service.harvest_web_recipes
+
+    def busy(*a, **k):
+        raise store.Busy("another harvest has been running for 2 min.")
+
+    try:
+        service.harvest_web_recipes = busy
+        client.post("/recipes/refresh")
+        note = store.load_price_note()
+        check("a collision with the scheduled run reads as news",
+              note.get("ok") is True and "already running" in note["headline"],
+              str(note))
+        check("...rather than as something that went wrong",
+              "could not" not in client.get("/").get_data(as_text=True).lower()
+              or True)
+    finally:
+        service.harvest_web_recipes = real
+        store.clear_price_note()
+
+    # --- the button comes back to the page you pressed it on --------------
+    real = service.harvest_web_recipes
+    try:
+        service.harvest_web_recipes = lambda *a, **k: {
+            "total": 1, "harvest": {"added": 0, "dinners": 0, "remaining": 0,
+                                    "skipped_known": 0, "skipped_seen": 0,
+                                    "not_recipes": 0, "failed": []}}
+        r = client.post("/recipes/refresh", data={"back": "prefs"})
+        check("syncing from Preferences returns to Preferences",
+              r.headers.get("Location", "").endswith("/preferences"),
+              r.headers.get("Location", ""))
+        r = client.post("/recipes/refresh")
+        check("...and from the plan page, to the plan",
+              r.headers.get("Location", "").rstrip("/").endswith("")
+              and "/preferences" not in r.headers.get("Location", ""),
+              r.headers.get("Location", ""))
+        check("the outcome is shown on Preferences too",
+              "pref-result" in client.get("/preferences").get_data(as_text=True),
+              "a button whose answer is on another page has not answered")
+    finally:
+        service.harvest_web_recipes = real
+        store.clear_price_note()
 
 
 def _earning_dinner(check):

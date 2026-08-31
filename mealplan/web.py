@@ -184,17 +184,24 @@ def refresh_recipes():
     or after a long gap.
     """
     _clear_notices()
+    back = "prefs" if request.form.get("back") == "prefs" else "index"
     config, err = _config_or_error()
     if err:
         return render_template("plan.html", plan=None, error=err, cache=None), 400
     try:
         from . import rte
         result = service.harvest_web_recipes(config, limit=rte.BUTTON_BATCH)
+    except store.Busy as exc:
+        # The scheduled task got there first. That is the system working, not
+        # failing, so it reads as news rather than as an error.
+        store.save_price_note({"ok": True, "kind": "recipes", "updated": 0,
+                               "headline": f"already running &mdash; {exc}"})
+        return redirect(url_for(back))
     except Exception as exc:  # noqa: BLE001 - the page is the error report
         app.logger.error("recipe harvest failed: %s", traceback.format_exc())
         store.save_price_note({"ok": False, "kind": "recipes",
                                "headline": str(exc)})
-        return redirect(url_for("index"))
+        return redirect(url_for(back))
     h = result["harvest"]
     store.save_price_note({
         "ok": True,
@@ -206,7 +213,7 @@ def refresh_recipes():
         "skipped": h["failed"][:6],
         "remaining": h["remaining"],
     })
-    return redirect(url_for("index"))
+    return redirect(url_for(back))
 
 
 def _harvest_headline(h: dict) -> str:
@@ -293,7 +300,13 @@ def prefs():
     except Exception as exc:  # noqa: BLE001
         app.logger.error("preferences failed: %s", traceback.format_exc())
         return render_template("preferences.html", options=None, error=str(exc))
-    return render_template("preferences.html", options=options, error=None)
+    try:
+        recipes = service.web_refresh_state(config)
+    except Exception:  # noqa: BLE001 - a panel is not worth losing the page
+        app.logger.error("recipe state failed: %s", traceback.format_exc())
+        recipes = {}
+    return render_template("preferences.html", options=options, error=None,
+                           recipes=recipes, note=store.load_price_note())
 
 
 @app.post("/preferences")

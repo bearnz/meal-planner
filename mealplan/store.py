@@ -6,9 +6,11 @@ hand when the planner gets something wrong.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
-from datetime import date, timedelta
+import time
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,8 @@ HISTORY_PATH = DATA / "history.json"
 UNDO_PATH = DATA / "prefs_undo.json"
 PRICE_NOTE_PATH = DATA / "price_note.json"
 RTE_PATH = DATA / "rte.json"
+HARVEST_LOG = DATA / "harvest.log"
+HARVEST_LOCK = DATA / "harvest.lock"
 
 DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday",
              "saturday", "sunday"]
@@ -168,6 +172,82 @@ def load_rte() -> dict:
 
 def save_rte(payload: dict) -> None:
     _write_json(RTE_PATH, payload)
+
+
+class Busy(RuntimeError):
+    """Another harvest is already running."""
+
+
+@contextlib.contextmanager
+def harvest_lock(stale_minutes: int = 90):
+    """One harvest at a time, across processes.
+
+    It stopped being theoretical the moment the harvest went on a schedule: the
+    task fires at seven, somebody presses the button at seven, and both read
+    `rte.json`, both add their own recipes, and whichever finishes last writes a
+    file missing the other's work. Nothing errors and nothing looks wrong -- the
+    recipes are simply not there, and the `seen` map says they were read, so
+    they are never fetched again.
+
+    A file rather than a lock library, created with O_EXCL so the check and the
+    claim are one operation. A stale lock is broken after `stale_minutes`,
+    because the alternative is a killed process locking the feature out
+    permanently and the fix being a file nobody knows to delete.
+    """
+    DATA.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(HARVEST_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        age_s = 1e9
+        try:
+            age_s = time.time() - HARVEST_LOCK.stat().st_mtime
+        except OSError:
+            pass
+        if age_s < stale_minutes * 60:
+            raise Busy(
+                f"another harvest has been running for {age_s / 60:.0f} min. "
+                f"If nothing is running, delete {HARVEST_LOCK}.")
+        try:
+            HARVEST_LOCK.unlink()
+        except OSError:
+            pass
+        fd = os.open(HARVEST_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    try:
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        yield
+    finally:
+        try:
+            HARVEST_LOCK.unlink()
+        except OSError:
+            pass
+
+
+def log_harvest(line: str) -> None:
+    """One line per run, appended. The only trace a scheduled run leaves.
+
+    Kept small and dated rather than verbose: what a person wants six weeks
+    later is "has this been working", and a progress bar written to a file
+    answers that worse than one line a week does.
+    """
+    try:
+        DATA.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().isoformat(timespec="seconds")
+        with open(HARVEST_LOG, "a", encoding="utf-8") as fh:
+            fh.write(f"{stamp}  {line}" + chr(10))
+        _trim_log()
+    except OSError:
+        pass          # a log that cannot be written is not a reason to fail
+
+
+def _trim_log(keep: int = 400) -> None:
+    """Keep the log to the last few hundred runs, so it cannot grow forever."""
+    try:
+        lines = HARVEST_LOG.read_text(encoding="utf-8").splitlines(keepends=True)
+        if len(lines) > keep * 2:
+            HARVEST_LOG.write_text("".join(lines[-keep:]), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def load_price_note() -> dict:

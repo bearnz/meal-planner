@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 import json
@@ -401,17 +402,43 @@ def cmd_harvest(args) -> int:
     a run that started over would re-read a thousand pages somebody else pays
     to serve. Stop it whenever; `--limit` caps a session and the next one picks
     up where it left off.
+
+    `--quiet` is the shape a scheduled run wants: nothing on stdout, one line
+    appended to data/harvest.log, and an exit code that means something. It is
+    not just a mute switch -- under pythonw.exe (which is how a task runs
+    without flashing a console window) `sys.stdout` is None and an ordinary
+    `print` raises, so the noisy version cannot be scheduled silently at all.
     """
     from mealplan import rte
 
     config = store.load_config()
-    result = service.harvest_web_recipes(
-        config, limit=args.limit or 0, refresh=bool(args.refresh),
-        progress=lambda i, n, url: print(
-            f"\r  {i}/{n}  {rte.slug(url)[:52]:<52}", end="", flush=True))
+
+    def loud(i, n, url):
+        print(f"\r  {i}/{n}  {rte.slug(url)[:52]:<52}", end="", flush=True)
+
+    try:
+        result = service.harvest_web_recipes(
+            config, limit=args.limit or 0, refresh=bool(args.refresh),
+            progress=None if args.quiet else loud)
+    except store.Busy as exc:
+        # Not a failure: the work is happening, just not here. A scheduled run
+        # that collides with a manual one should say so and exit clean, or a
+        # weekly task turns into a weekly alert.
+        _say(args, f"skipped: {exc}")
+        return 0
+    except Exception as exc:      # noqa: BLE001 - a cron job needs an exit code
+        _say(args, f"FAILED: {exc}")
+        return 1
+
+    h = result["harvest"]
+    summary = (f"{h['added']} new, {h['dinners']} dinners, "
+               f"{result['total']} on file, {h['remaining']} to go"
+               + (f", {len(h['failed'])} failed" if h["failed"] else ""))
+    _say(args, summary)
+    if args.quiet:
+        return 0
 
     print("\n")
-    h = result["harvest"]
     print(f"  {h['added']} new recipe(s), {h['dinners']} of them dinners.")
     print(f"  skipped {h['skipped_known']} already in Paprika, "
           f"{h['skipped_seen']} already harvested.")
@@ -426,6 +453,15 @@ def cmd_harvest(args) -> int:
               f"{' (about ' + str(round(h['remaining'] / 60)) + ' min)' if h['remaining'] > 60 else ''}.")
     print(f"\n  {rte.ATTRIBUTION}\n")
     return 0
+
+
+def _say(args, line: str) -> None:
+    """The log always; the terminal only when there is one to write to."""
+    store.log_harvest(line)
+    if not args.quiet and sys.stdout is not None:
+        print(f"\n  {line}")
+
+
 
 
 def cmd_stale(args) -> int:
@@ -459,6 +495,12 @@ def main() -> int:
     # which cannot encode them -- so the whole command dies on a decoration.
     # errors="replace" rather than a strict switch: a console that genuinely
     # cannot draw the glyph should show a box, not refuse to print the menu.
+    # `sys.stdout` is None under pythonw.exe, which is how a scheduled task runs
+    # without flashing a console window. Everything here has to survive that.
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")
@@ -510,6 +552,8 @@ def main() -> int:
                     help='narrow --grocer-find, e.g. "Meat & Seafood"')
     ap.add_argument("--harvest", action="store_true",
                     help="read recipetineats.com for dinners you do not have")
+    ap.add_argument("--quiet", action="store_true",
+                    help="with --harvest: no output, log to data/harvest.log")
     ap.add_argument("--stale", action="store_true",
                     help="list prices that are unchecked or old")
     args = ap.parse_args()

@@ -506,3 +506,23 @@ button.busy { opacity: .7; cursor: progress; }
 .lib-part .dim { opacity: .65; }
 .lib-note { flex: 1 1 16rem; font-size: 0.74rem; opacity: .8; line-height: 1.5; }
 .library code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+/* The recipe sync on the preferences page. Its own block below the settings
+   form, because it is a second thing you can submit from that page and HTML
+   will not nest one form inside another. */
+.pref-sync {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 0.9rem;
+  margin-top: 0.6rem;
+}
+.pref-sync form { margin: 0; }
+.pref-sync .pref-hint { flex: 1 1 18rem; font-size: 0.78rem; line-height: 1.55; }
+.pref-sync b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.pref-result {
+  margin: 0.6rem 0 0; padding: 0.45rem 0.7rem; border-radius: 7px;
+  font-size: 0.8rem; background: var(--card); border: 1px solid var(--effort);
+}
+.pref-result.bad {
+  border-color: var(--error-ink); background: var(--error-bg);
+  color: var(--error-ink);
+}
+.pref-note.tiny { font-size: 0.7rem; opacity: .7; margin-top: 0.8rem; }

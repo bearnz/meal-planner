@@ -71,6 +71,17 @@ TIMEOUT = 30
 # thousand of them in a row is still a thousand, and nothing here is urgent.
 DELAY = 1.0
 
+# How often it is worth asking the site whether it has published anything. They
+# put out a handful of recipes a week, and asking costs five small sitemap
+# requests, so this is a floor on nagging rather than a claim that nothing can
+# change inside it.
+MIN_CHECK_HOURS = 20
+
+# How many new recipes one press of the button will fetch before stopping and
+# saying there are more. A page load cannot sit on the network for four
+# minutes, and the run is resumable, so a cap is free.
+BUTTON_BATCH = 20
+
 # How much of a page to read before giving up on finding the recipe in it. The
 # block sits about 30 KB in; this is four times that, so a page that has moved
 # its markup is reported rather than silently skipped, and a page that never

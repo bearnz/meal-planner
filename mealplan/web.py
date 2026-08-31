@@ -64,6 +64,11 @@ def index():
     # reason: a price fetched from the command line while this page sat open
     # changes both what it costs and when the button may next run.
     try:
+        recipes = service.web_refresh_state(config)
+    except Exception:  # noqa: BLE001 - as above; a strip is not the week
+        app.logger.error("recipe state failed: %s", traceback.format_exc())
+        recipes = {}
+    try:
         prices = service.price_refresh_state(config)
     except Exception:  # noqa: BLE001 - a button is not worth losing the week over
         # Logged, not swallowed. A bare pass here hides the button and gives no
@@ -72,7 +77,7 @@ def index():
         prices = {}
     return render_template("plan.html", plan=plan, error=error, cache=cache,
                            undo=store.load_undo(), prices=prices,
-                           note=store.load_price_note())
+                           recipes=recipes, note=store.load_price_note())
 
 
 @app.post("/sync")
@@ -168,8 +173,71 @@ def refresh_prices():
     return redirect(url_for("index"))
 
 
+@app.post("/recipes/refresh")
+def refresh_recipes():
+    """Ask RecipeTin Eats what it has published since last time.
+
+    Capped at a batch rather than running to completion: a page load cannot sit
+    on the network for four minutes, and the harvest is resumable, so stopping
+    early costs nothing but a second press. The usual answer is a handful --
+    they publish a few recipes a week -- and the cap only bites the first time
+    or after a long gap.
+    """
+    _clear_notices()
+    config, err = _config_or_error()
+    if err:
+        return render_template("plan.html", plan=None, error=err, cache=None), 400
+    try:
+        from . import rte
+        result = service.harvest_web_recipes(config, limit=rte.BUTTON_BATCH)
+    except Exception as exc:  # noqa: BLE001 - the page is the error report
+        app.logger.error("recipe harvest failed: %s", traceback.format_exc())
+        store.save_price_note({"ok": False, "kind": "recipes",
+                               "headline": str(exc)})
+        return redirect(url_for("index"))
+    h = result["harvest"]
+    store.save_price_note({
+        "ok": True,
+        "kind": "recipes",
+        "headline": _harvest_headline(h),
+        "store": "",
+        "updated": h["added"],
+        "missing": [],
+        "skipped": h["failed"][:6],
+        "remaining": h["remaining"],
+    })
+    return redirect(url_for("index"))
+
+
+def _harvest_headline(h: dict) -> str:
+    """One sentence about what came back, in the shape the banner wants."""
+    if not h["added"]:
+        return ("nothing new published since last time"
+                if not h["remaining"] else
+                f"{h['remaining']} still to read")
+    if h["added"] == 1:
+        out = "1 new recipe, " + ("and it is a dinner" if h["dinners"]
+                                  else "though not a dinner")
+    else:
+        out = (f"{h['added']} new recipes, "
+               + (f"{h['dinners']} of them dinners" if h["dinners"]
+                  else "none of them dinners"))
+    if h["remaining"]:
+        out += f" — {h['remaining']} more to read"
+    return out
+
+
+@app.post("/notice/dismiss")
+def dismiss_notice():
+    """Dismiss the banner, whichever refresh put it there."""
+    store.clear_price_note()
+    return redirect(url_for("index"))
+
+
 @app.post("/prices/dismiss")
 def dismiss_price_note():
+    """The name this had when only prices used it. Kept so a bookmarked or
+    half-cached page does not 404 on Dismiss."""
     store.clear_price_note()
     return redirect(url_for("index"))
 

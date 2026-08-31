@@ -22,6 +22,7 @@ def run(check):
     _skipping(check)
     _in_the_pool(check)
     _marked_on_the_page(check)
+    _keeping_up(check)
     _earning_dinner(check)
     _leftovers(check)
     _your_own_library_survives(check)
@@ -410,6 +411,89 @@ def _marked_on_the_page(check):
               payload(theirs)["preferred_source"] is True)
     finally:
         store.load_rte = real
+
+
+def _keeping_up(check):
+    print("")
+    print("keeping up with what they publish next")
+    from datetime import datetime, timedelta, timezone
+
+    from mealplan import rte, service, store, web
+
+    def aged(hours, pending=0, n=3):
+        when = datetime.now(timezone.utc) - timedelta(hours=hours)
+        return {"fetched": when.isoformat(timespec="seconds"),
+                "pending": pending,
+                "recipes": [{"uid": f"rte:{i}", "name": f"R{i}",
+                             "url": f"https://x/{i}/", "ingredients": "beef",
+                             "categories": ["Beef"]} for i in range(n)],
+                "seen": {}}
+
+    real = store.load_rte
+    try:
+        store.load_rte = lambda: aged(3)
+        st = service.web_refresh_state({})
+        check("a check three hours old is not offered again",
+              st["ready"] is False, str(st))
+        check("...and says how long until it is",
+              st["wait_hours"] == 17, str(st["wait_hours"]))
+        check("...while still counting what is on file", st["have"] == 3)
+
+        store.load_rte = lambda: aged(30)
+        check("a day-old check is offered",
+              service.web_refresh_state({})["ready"] is True)
+
+        # A run that stopped part way left work that is already known about.
+        # Offering to finish it does not ask the site for news, so the interval
+        # -- which exists to stop pestering them -- has nothing to say about it.
+        store.load_rte = lambda: aged(1, pending=40)
+        st = service.web_refresh_state({})
+        check("an interrupted run can be resumed inside the interval",
+              st["ready"] and st["pending"] == 40, str(st))
+
+        check("switching it off in config is reported",
+              service.web_refresh_state({"web_recipes": False})["enabled"]
+              is False)
+
+        # The page must not make five sitemap requests because a tab was left
+        # open, so the state has to be answerable from the local file alone.
+        calls = []
+        real_text = rte.get_text
+        try:
+            rte.get_text = lambda url: calls.append(url) or ""
+            store.load_rte = lambda: aged(30)
+            web.app.test_client().get("/")
+            check("rendering the page asks the site for nothing",
+                  not calls, f"fetched {calls}")
+        finally:
+            rte.get_text = real_text
+    finally:
+        store.load_rte = real
+
+    # The sentence the banner prints. It is the only place a person is told
+    # whether the run finished, and "1 of them dinners" about one recipe reads
+    # like a machine wrote it, which is because one did.
+    for added, dinners, remaining, want in [
+        (1, 1, 0, "1 new recipe, and it is a dinner"),
+        (1, 0, 0, "1 new recipe, though not a dinner"),
+        (5, 3, 0, "5 new recipes, 3 of them dinners"),
+        (4, 0, 0, "4 new recipes, none of them dinners"),
+        (0, 0, 0, "nothing new published since last time"),
+        (0, 0, 9, "9 still to read"),
+    ]:
+        got = web._harvest_headline(
+            {"added": added, "dinners": dinners, "remaining": remaining})
+        check(f"{added} added, {dinners} dinners -> {want!r}", got == want,
+              f"got {got!r}")
+
+    check("a capped run says there is more, rather than looking finished",
+          "more to read" in web._harvest_headline(
+              {"added": 20, "dinners": 11, "remaining": 37}),
+          "a page load cannot sit on the network for four minutes, so the "
+          "button stops early and has to say so")
+
+    check("the button's batch is small enough to wait for",
+          0 < rte.BUTTON_BATCH <= 30, str(rte.BUTTON_BATCH))
 
 
 def _earning_dinner(check):

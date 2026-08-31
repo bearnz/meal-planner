@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 
 from . import (paprika, preferences, pricesrc, pricing, quantity, seasons,
@@ -305,6 +305,54 @@ def _side_payload(s: Scored, config: dict) -> dict[str, Any]:
 
 # --- recipes from the web -----------------------------------------------------
 
+def web_refresh_state(config: dict) -> dict[str, Any]:
+    """Whether it is worth asking RecipeTin Eats what is new, without asking.
+
+    Reads nothing but the local file, deliberately: this is called on every
+    render of the plan page, and five sitemap requests per page view is not a
+    thing to do to somebody because a browser tab was left open.
+
+    `pending` is what the last run said was still unread. It is a floor, not a
+    total -- the site has almost certainly published since -- and it is the
+    number that matters, because it is the difference between "nothing to do"
+    and "you stopped halfway through a big one".
+    """
+    from . import rte
+
+    data = store.load_rte()
+    recipes = data.get("recipes") or []
+    fetched = str(data.get("fetched") or "")
+    age = _hours_since(fetched)
+    due = age >= rte.MIN_CHECK_HOURS
+    return {
+        "have": len(recipes),
+        "in_pool": len(web_recipes(config)) if recipes else 0,
+        "enabled": bool(config.get("web_recipes", True)),
+        "fetched": fetched,
+        "hours": round(age) if fetched else None,
+        "pending": int(data.get("pending") or 0),
+        # Something left over from an interrupted run is worth offering
+        # whatever the clock says: the interval is about not pestering the
+        # site for news, and this is work already known about.
+        "ready": bool(due or data.get("pending")),
+        "wait_hours": 0 if due else max(1, round(rte.MIN_CHECK_HOURS - age)),
+        "source": rte.SOURCE_NAME,
+        "attribution": rte.ATTRIBUTION,
+    }
+
+
+def _hours_since(iso: str) -> float:
+    if not iso:
+        return 1e9
+    try:
+        then = datetime.fromisoformat(iso)
+    except ValueError:
+        return 1e9
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - then).total_seconds() / 3600.0
+
+
 def harvest_web_recipes(config: dict, limit: int = 0, refresh: bool = False,
                         progress: Callable[[int, int, str], None] | None = None
                         ) -> dict[str, Any]:
@@ -339,6 +387,9 @@ def harvest_web_recipes(config: dict, limit: int = 0, refresh: bool = False,
                        "attribution": rte.ATTRIBUTION},
             "recipes": sorted(have.values(), key=lambda r: r["name"].lower()),
             "seen": seen,
+            # What this run knows is still unread, so the page can offer to
+            # continue rather than making somebody remember they stopped.
+            "pending": max(0, partial.remaining),
         })
 
     result = rte.harvest(rte.catalogue(), known, seen, limit=limit,

@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 766 checks over scoring, planning, costing and the forecast
+python selftest.py       # 787 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -427,6 +427,42 @@ python run.py --harvest --limit 200  # just this many, then stop
 python run.py --harvest --refresh    # re-read recipes that have changed
 ```
 
+### Keeping up with what they publish next
+
+They put out a few recipes a week, so the harvest is incremental by design
+rather than a thing you re-run from scratch. Every page read is remembered
+against the sitemap's `lastmod`; a later run reads the five small sitemaps,
+subtracts everything it already has, and fetches only the difference. Today
+that is one page.
+
+There is a **library strip** under the money block showing both sources and how
+fresh each is, with a **Check for new recipes** button:
+
+```
+Paprika 99 synced 2026-08-30 · RecipeTin Eats 1,448 checked 4h ago  [Check for new recipes]
+```
+
+The button reads the sitemaps and pulls up to `BUTTON_BATCH` (20) new recipes,
+then stops and says how many are left. A page load cannot sit on the network
+for four minutes, and the harvest resumes, so the cap costs nothing but a
+second press &mdash; and it only ever bites the first time or after a long gap.
+
+Like the price refresh, it knows before you press whether it can do anything:
+`MIN_CHECK_HOURS` (20) is a floor on how often it is worth asking, and inside
+that the button is drawn disabled and says when it comes back. The one thing
+that overrides it is an interrupted run &mdash; those recipes are already known
+about, so finishing them asks the site for nothing new and is always offered.
+
+**Rendering the page asks the site for nothing.** The state is answered from
+the local file alone, and there is a test that says so, because five sitemap
+requests per page view is not a thing to do to somebody because a browser tab
+was left open.
+
+To have it happen without you: `python run.py --harvest` is safe to run on a
+schedule (Task Scheduler, cron, a login script). It is resumable, it refuses to
+re-read anything unchanged, and on a quiet week it costs five requests and
+exits.
+
 ### Link-first, and what that means
 
 What is kept is what the planner has to reason about: the name, the
@@ -805,7 +841,7 @@ Running against a real 111-recipe Paprika library, plus about 1,400 recipes harv
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 766 checks, all passing
+python selftest.py                        # 787 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole

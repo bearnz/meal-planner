@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 663 checks over scoring, planning, costing and the forecast
+python selftest.py       # 766 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -413,6 +413,150 @@ edited — the weights are nudges, and several small ones agreeing is what moves
 score. `python run.py --scores` prints the whole library sorted by heartiness,
 which is the fastest way to see whether a change did what you wanted.
 
+## Recipes from the web
+
+Sixty-three of the ninety-nine recipes in Paprika came from
+[RecipeTin Eats](https://www.recipetineats.com), which is a fairly clear
+statement about what gets cooked here. `--harvest` reads that site for the ones
+that were never saved, scores them on the same two axes as everything else, and
+puts them in the pool the planner chooses from.
+
+```bash
+python run.py --harvest              # resumable; about 27 minutes for the lot
+python run.py --harvest --limit 200  # just this many, then stop
+python run.py --harvest --refresh    # re-read recipes that have changed
+```
+
+### Link-first, and what that means
+
+What is kept is what the planner has to reason about: the name, the
+ingredients, the times, a few tags, the two scores, and **the URL**. The method
+is read once, at fetch time, to work out how much work the dish is and whether
+it is deep-fried or full of liver &mdash; then the conclusions are kept and the
+prose is thrown away. So `data/rte.json` can say *"a 25-minute one-pan chicken
+thing that nobody here objects to"*, and the only way to actually cook it is to
+follow the link. That is the right shape for somebody else's writing, and it is
+the shape that pays them: the recipe still lives where it was published.
+
+Two fields on `Recipe` exist for this and Paprika never sets them:
+
+- `steps` &mdash; how many steps the source stated, because there is no method
+  text left to count.
+- `method_terms` &mdash; the techniques the method mentioned, as plain words:
+  `["slow cooker", "overnight", "marinate"]`. `_haystack` reads it exactly where
+  it reads `directions`, so the aversion check, the faff and hands-off scores
+  and the unattended test all keep working on a recipe whose method was never
+  kept.
+
+The aversion groups in `preferences.py` are written as small regexes
+(`fill.{0,20}with oil`), so a match cannot be stored and replayed. What is
+stored instead is the first *literal* term in the matched group &mdash;
+`deep fry` for deep frying &mdash; which by construction re-matches the group it
+came from. The round trip is asserted in the tests rather than assumed.
+
+### Being a good guest
+
+Their robots.txt allows this (`User-agent: *` / `Disallow:`) and points at the
+sitemap this reads. It also names `anthropic-ai` and `Claude-Web` and refuses
+them, which is worth knowing before you run it: those tokens identify a
+crawler fleet rather than one household's planner, and this is genuinely
+personal and non-commercial, but the site named them and you should decide
+that for yourself rather than have it decided for you.
+
+- **The page is abandoned as soon as the recipe has been read.** Their articles
+  are about half a megabyte of HTML and the schema.org block sits ~6% in, at
+  the end of `<head>`. Streaming and stopping there costs them roughly 15 KB a
+  recipe instead of 140 &mdash; the difference between a 31 MB harvest and a
+  240 MB one. It is one `stream=True` and a `break`, and it is the single most
+  important line in the module.
+- `robots_allows()` gates every request and fails closed, the same gate the
+  grocer.nz client uses.
+- A second between requests, and **the harvest checkpoints as it goes**: a
+  Ctrl-C at page 1600 must not throw away 1600 fetches, because the only way to
+  get them back is to ask again.
+- Recipes already in Paprika are never fetched, matched on a normalised URL so
+  `www`, `http` and a tracking parameter are not three different recipes.
+- Every page read is remembered against the sitemap's `lastmod`, so a later run
+  re-reads only what actually changed. A page with no recipe on it (a travel
+  diary, a tribute to the dog) is remembered too &mdash; it will never become a
+  dinner, and that is the difference between reading it once and reading it
+  every run.
+
+### Their vocabulary is not this one
+
+`is_dinner` tests `exclude_categories` as a **subset**, which works on a
+curated Paprika library and is a trap for a harvested one: a dessert tagged
+Dessert/Chocolate/Baking is not a subset of anything excluded, so it lands on
+the menu as Tuesday dinner. So harvested recipes are given the planner's tags,
+not the site's, and **anything that is not dinner gets exactly one tag** so the
+subset test can fire. Only once a recipe has survived that does it collect
+protein and variety facets, where more is better.
+
+Recipes that want yesterday's dinner are kept out of the pool. RecipeTin Eats
+runs a "cook once eat thrice" series, and about one recipe in twenty-five lists
+*"2 cups leftover beef from Slow Cooked Beef Cheeks in Red Wine"*. Those are
+good recipes and not things a planner can book for a Thursday: the shopping
+list it produces has a line on it no shop sells. `"skip_leftover_recipes":
+false` puts them back without re-reading two thousand pages to change your mind,
+and `"web_recipes": false` turns the whole lot off without deleting an hour of
+somebody else's bandwidth.
+
+### Your own library still has to win some nights
+
+Harvesting put 591 recipes in the pool against the 88 in Paprika, and the first
+week planned that way had **all seven nights from the web**. Nothing was wrong
+with any of them, which is the point: a recipe you took the trouble to save is
+the strongest statement of preference in this project &mdash; stronger than the
+source it came from &mdash; and a pool that ignores it hands you a stranger's
+week.
+
+So `weights.saved` charges a harvested recipe a little more, the same shape as
+`weights.source`: a cost on the others rather than a bonus, so it cannot drive
+a total negative. The curve is steep, so it is worth knowing before you turn
+the dial:
+
+| `weights.saved` | nights a week from the web |
+| --- | --- |
+| 0.0 | 7 &mdash; your library is invisible |
+| 0.35&ndash;0.4 | **3** (the default) |
+| 0.45 | 1 |
+| 0.8 | 0 &mdash; the harvest is switched off in all but name |
+
+At the default it wins a close call and loses to a real mismatch, so a
+harvested recipe still takes the nights where it is genuinely the better
+answer. Set it to 0 to let the whole pool compete flat.
+
+### A harvested recipe has to earn dinner
+
+`is_dinner` keeps a recipe with no categories at all, which is right for a
+curated Paprika library &mdash; an uncategorised library should still plan
+&mdash; and exactly wrong here, where no tags means the classifier looked at
+the page and could not place it. Three things off one generated week made the
+case:
+
+```
+Gingerbread Boxes & Mason Jars   []                    a Christmas craft post
+Freezer Friendly Mexican Meals   ["Mexican"]           a round-up of links
+Lemon Potato Salad               ["Potato", "Salad"]   a side
+```
+
+All three were served as dinner. So `web_verdict` makes a harvested recipe
+earn it: a protein tag, or a facet that is a meal on its own (pasta, rice,
+noodles, curry, a stew). A salad without a protein is a side &mdash; a Thai
+beef salad is dinner and a potato salad is what goes next to one. Anything with
+nothing recognisable at all is not offered, because there is no tag for "this
+is a craft project". The site's own filing always wins: a page it called a
+dessert is not second-guessed here.
+
+### What it did to the pool
+
+Harvested dinners score almost identically to the curated ones &mdash; effort
+median 0.33 against 0.32, heartiness 0.69 against 0.73 &mdash; which is the
+result you want, because it means they compete on merit rather than winning
+every weeknight by looking artificially easy. Their effort tops out lower
+(0.67 against 0.84), which is honest: without the method prose there are fewer
+faff terms to find.
+
 ## Prices from grocer.nz
 
 Shelf prices for one store, pulled from [grocer.nz](https://grocer.nz). Needs
@@ -656,12 +800,12 @@ Specials are taken, because anyone can have them.
 
 ## Where this is up to
 
-Running against a real 111-recipe Paprika library. To pick it up:
+Running against a real 111-recipe Paprika library, plus about 1,400 recipes harvested from RecipeTin Eats. To pick it up:
 
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 663 checks, all passing
+python selftest.py                        # 766 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole
@@ -717,6 +861,25 @@ worth remembering: the synthetic library is clean, and a real one is not.
   otherwise, so there is a hand-written answer instead: `side_overrides` in
   config.json, keyed by name like `heartiness_overrides` beside it, and
   working in both directions. See "Sides" below.
+- **The library grew eightfold and two hot loops fell over.** Harvesting the
+  web took the pool from 99 recipes to about 1,400, and a re-plan went from
+  instant to nearly six seconds. Neither cause was the new code. `scoring`
+  ran every term in four tables past every recipe -- three hundred regexes
+  each -- and `pricing.match` walked four hundred aliases per ingredient line
+  *re-escaping and recompiling each one every time*, which is two and a half
+  million calls to `re.escape` on strings that had not changed since the file
+  was read. Both now compile once and put a plain substring gate in front of
+  the regex, which is sound rather than approximate: the pattern only adds
+  word boundaries and an optional plural to a literal, so a term whose longest
+  word is absent cannot match. 5.7s to 2.4s, and every one of the 776 scores
+  came out identical -- asserted, because "I convinced myself the boundaries
+  line up" is how a planner quietly stops seeing beef.
+- **A harvested recipe had no cost and nothing to buy.** The costing and the
+  shopping list each built their own "recipe by uid" dict from the Paprika
+  cache alone. Neither failed loudly -- a uid the lookup misses is skipped --
+  so the planner would put a web recipe on Thursday and Thursday would
+  silently have no price and an empty ingredient list. The fix was to stop
+  having two answers to "what recipes exist": `service.recipes_by_uid`.
 - **The weekly price refresh had no button, and the page it belonged on was the
   one saying prices were stale.** It is there now, under the "last refreshed"
   line, and the interesting half is that it renders itself from grocer.nz's

@@ -358,12 +358,26 @@ class Catalogue:
             for alias in [key] + list(spec.get("aliases") or []):
                 self._aliases.append((alias.lower(), key))
         self._aliases.sort(key=lambda kv: (-len(kv[0]), kv[0]))
+        # Built once, here, rather than per call. `match` walks every alias in
+        # the file -- around four hundred -- for every ingredient line, and it
+        # was escaping and recompiling each one every time: a re-plan spent two
+        # and a half million calls to `re.escape` on strings that had not
+        # changed since the file was read. The gate is the same idea as the one
+        # in `scoring._prepare`: the pattern only adds word boundaries and an
+        # optional plural to a literal, so an alias whose longest word is not
+        # in the text literally cannot match, and `in` settles that at C speed.
+        self._matchers = [
+            (max(alias.split(), key=len) if alias.split() else alias,
+             re.compile(r"\b" + re.escape(alias).replace(r"\ ", r"\s+")
+                        + r"e?s?\b"),
+             key)
+            for alias, key in self._aliases
+        ]
 
     def match(self, text: str) -> str:
         hay = f" {text.lower()} "
-        for alias, key in self._aliases:
-            if re.search(r"\b" + re.escape(alias).replace(r"\ ", r"\s+")
-                         + r"e?s?\b", hay):
+        for gate, pattern, key in self._matchers:
+            if gate in hay and pattern.search(hay):
                 return key
         return ""
 

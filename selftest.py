@@ -671,6 +671,9 @@ if __name__ == "__main__":
     import selftest_grocer
     selftest_grocer.run(check)
 
+    import selftest_rte
+    selftest_rte.run(check)
+
     import selftest_speed
     selftest_speed.run(check, scored_library())
 

@@ -208,25 +208,65 @@ def _norm(value: float, low: float, high: float) -> float:
 
 
 def _haystack(r: Recipe, category_names: list[str]) -> str:
+    # `method_terms` stands in for `directions` on a recipe read from a website
+    # whose method was not kept: a short list of plain technique words, matched
+    # by exactly the same tables. Everything that reads the method -- the
+    # aversion check, the faff and hands-off scores, the unattended test --
+    # goes through here, so this one line is what makes those keep working.
     parts = [r.name, " ".join(category_names), r.ingredients, r.directions,
-             r.description, r.notes]
+             " ".join(r.method_terms), r.description, r.notes]
     return " ".join(p for p in parts if p).lower()
 
 
+# A table, prepared once: for each term, the compiled whole-word pattern and a
+# plain substring that has to be present before the pattern is worth running.
+#
+# The prefilter is the whole optimisation and it is worth explaining, because it
+# looks like premature cleverness and is not. Scoring one recipe runs every term
+# in four tables past its text -- about three hundred regexes -- and a library
+# of fourteen hundred recipes turns that into four hundred thousand matches and
+# five seconds a re-plan. Almost all of them fail: no recipe contains
+# "cassoulet". `in` is a C-speed substring scan and the regex only differs from
+# it by word boundaries and by allowing any whitespace between words, so a term
+# whose longest word is absent literally cannot match -- which makes the cheap
+# test a sound gate on the expensive one, and not an approximation of it.
+_PREPARED: dict[int, tuple[dict, list]] = {}
+
+
+def _prepare(table: dict[str, float]) -> list[tuple[str, str, "re.Pattern"]]:
+    key = id(table)
+    hit = _PREPARED.get(key)
+    if hit is None or hit[0] is not table:
+        rows = []
+        for term in table:
+            pattern = re.compile(
+                r"\b" + re.escape(term).replace(r"\ ", r"\s+") + r"\b")
+            # The longest word in the term, as the most selective gate.
+            gate = max(term.split(), key=len) if term.split() else term
+            rows.append((term, gate, pattern))
+        # The table itself is held so its id cannot be reused by another object
+        # after it is collected, which would hand back somebody else's patterns.
+        hit = (table, rows)
+        _PREPARED[key] = hit
+    return hit[1]
+
+
+def _present(haystack: str, table: dict[str, float]):
+    """The terms from `table` that appear in `haystack`, as whole words."""
+    for term, gate, pattern in _prepare(table):
+        if gate in haystack and pattern.search(haystack):
+            yield term
+
+
 def _term_score(haystack: str, table: dict[str, float]) -> float:
-    total = 0.0
-    for term, weight in table.items():
-        pattern = r"\b" + re.escape(term).replace(r"\ ", r"\s+") + r"\b"
-        if re.search(pattern, haystack):
-            total += weight
-    return total
+    # Overlapping terms both count, deliberately: "double cream" in a recipe is
+    # cream and then some, and the tables are written expecting it.
+    return sum(table[t] for t in _present(haystack, table))
 
 
 def _method_score(haystack: str, table: dict[str, float]) -> float:
     """The single strongest method match, not the sum of all of them."""
-    hits = [w for term, w in table.items()
-            if re.search(r"\b" + re.escape(term).replace(r"\ ", r"\s+") + r"\b",
-                         haystack)]
+    hits = [table[t] for t in _present(haystack, table)]
     # By magnitude, so the same helper serves the positive and negative tables.
     return max(hits, key=abs) if hits else 0.0
 
@@ -316,7 +356,9 @@ def score_effort(r: Recipe, category_names: list[str]) -> tuple[float, list[str]
     # fifteen minutes of prep is an easy Tuesday, so prep is weighted over total.
     hands_on = prep_min if prep_min is not None else total_min
     time_score = _norm(hands_on, 15, 75) if hands_on is not None else 0.4
-    steps = count_steps(r.directions)
+    # An authored count beats a derived one, and it is the only count there is
+    # when the directions were never kept.
+    steps = r.steps or count_steps(r.directions)
     steps_score = _norm(steps, 3, 14)
     ingr_score = _norm(count_ingredients(r.ingredients), 6, 20)
 

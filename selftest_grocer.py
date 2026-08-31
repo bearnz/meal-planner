@@ -1106,9 +1106,13 @@ def _sides(check):
           not (names & {s.name for s in library}))
     check("every side is named and can be looked up",
           all(d["name"] and d["uid"] for d in sides))
+    # Against a sort of the list, not of the set of names: two different pages
+    # on the same site can carry the same recipe title, and comparing a
+    # 379-entry list to a 378-entry set fails for a reason that has nothing to
+    # do with ordering.
+    order = [d["name"] for d in sides]
     check("the shelf is in a stable order",
-          [d["name"] for d in sides]
-          == sorted(names, key=str.lower),
+          order == sorted(order, key=str.lower),
           "the page re-renders on every read; the list must not shuffle")
 
     # The one the tags could not catch. A tray of potatoes, oil and salt was

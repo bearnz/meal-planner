@@ -480,3 +480,12 @@ button.busy { opacity: .7; cursor: progress; }
   display: block; margin-top: 0.35rem; font-size: 0.75rem; opacity: .8;
 }
 .undo-text code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+/* A night from a recipe nobody here has cooked. Quiet, but present: choosing
+   to try something new is a different decision from cooking a favourite, and
+   the planner has just made it on your behalf. */
+.untried {
+  font-size: .62rem; text-transform: uppercase; letter-spacing: .06em;
+  padding: .05rem .3rem; border-radius: .2rem; vertical-align: .08em;
+  background: rgba(120, 160, 220, .16); color: #7ca8dc;
+}

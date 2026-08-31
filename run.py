@@ -15,6 +15,11 @@
     python run.py --grocer-pin "beef chuck" 1672  remember which one it is
     python run.py --grocer-refresh                update every pinned price
     python run.py --stale    prices that have never been checked, or are old
+
+    python run.py --harvest              add recipetineats.com recipes you
+                                         do not already have (resumable)
+    python run.py --harvest --limit 200  just this many, then stop
+    python run.py --harvest --refresh    re-read ones that have changed
 """
 
 from __future__ import annotations
@@ -389,6 +394,40 @@ def cmd_grocer_refresh(args) -> int:
     return 0
 
 
+def cmd_harvest(args) -> int:
+    """Read RecipeTin Eats for dinners this library has never had.
+
+    Resumable on purpose, and the reason is politeness rather than convenience:
+    a run that started over would re-read a thousand pages somebody else pays
+    to serve. Stop it whenever; `--limit` caps a session and the next one picks
+    up where it left off.
+    """
+    from mealplan import rte
+
+    config = store.load_config()
+    result = service.harvest_web_recipes(
+        config, limit=args.limit or 0, refresh=bool(args.refresh),
+        progress=lambda i, n, url: print(
+            f"\r  {i}/{n}  {rte.slug(url)[:52]:<52}", end="", flush=True))
+
+    print("\n")
+    h = result["harvest"]
+    print(f"  {h['added']} new recipe(s), {h['dinners']} of them dinners.")
+    print(f"  skipped {h['skipped_known']} already in Paprika, "
+          f"{h['skipped_seen']} already harvested.")
+    if h["not_recipes"]:
+        print(f"  {h['not_recipes']} page(s) had no recipe on them.")
+    for line in h["failed"][:10]:
+        print(f"    failed  {line}")
+    print(f"\n  {result['total']} harvested recipes on file, "
+          f"{h['remaining']} still to read.")
+    if h["remaining"]:
+        print(f"  Run it again to continue"
+              f"{' (about ' + str(round(h['remaining'] / 60)) + ' min)' if h['remaining'] > 60 else ''}.")
+    print(f"\n  {rte.ATTRIBUTION}\n")
+    return 0
+
+
 def cmd_stale(args) -> int:
     """Which prices are real and which are still the shipped estimates."""
     data, _ = _catalogue()
@@ -469,6 +508,8 @@ def main() -> int:
                     help="how many rows to show (per-command default)")
     ap.add_argument("--category", default="",
                     help='narrow --grocer-find, e.g. "Meat & Seafood"')
+    ap.add_argument("--harvest", action="store_true",
+                    help="read recipetineats.com for dinners you do not have")
     ap.add_argument("--stale", action="store_true",
                     help="list prices that are unchecked or old")
     args = ap.parse_args()
@@ -496,6 +537,8 @@ def main() -> int:
             return cmd_grocer_pin(args)
         if args.grocer_refresh:
             return cmd_grocer_refresh(args)
+        if args.harvest:
+            return cmd_harvest(args)
         if args.stale:
             return cmd_stale(args)
     except Exception as exc:  # noqa: BLE001 - a CLI should say what broke

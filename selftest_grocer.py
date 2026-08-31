@@ -38,6 +38,7 @@ def run(check):
     _shopping_split(check)
     _by_item(check)
     _shopping_page(check)
+    _two_slices(check)
     _availability(check)
     _mapped_by_hand(check)
     _sides(check)
@@ -957,6 +958,56 @@ def _shopping_page(check):
     check("the tick store is scoped to a plan",
           "data-plan=" in page,
           "unscoped ticks show last week's shopping crossed off this week's")
+
+
+def _two_slices(check):
+    """The plan page is a rail and a week, and each thing is in one of them.
+
+    Structural rather than visual, because the failure this guards is a block
+    drifting across the divide -- somebody adds a panel above `<main>` and it
+    lands in the week, or moves a card and it lands in the rail. Neither breaks
+    a page that still renders; both put the thing in the wrong column, and
+    nothing else here would notice.
+    """
+    print("")
+    print("the plan page is two slices")
+    from mealplan import web
+
+    page = web.app.test_client().get("/").get_data(as_text=True)
+    check("the page has both columns",
+          'class="page"' in page and 'class="rail"' in page
+          and '<main class="week"' in page, "one of the two is missing")
+
+    rail = page[page.find('<aside class="rail"'):page.find("</aside>")]
+    week = page[page.find('<main class="week"'):page.find("</main>")]
+    check("...and they do not overlap", bool(rail) and bool(week)
+          and page.find("</aside>") < page.find('<main class="week"'))
+
+    # Every night is a card, and every card is in the week.
+    check("all seven nights are in the week column",
+          week.count('<article class="day') == 7,
+          f"{week.count('<article class=@day')} in the week, "
+          f"{rail.count('<article class=@day')} stranded in the rail"
+          .replace("@", chr(34)))
+    check("...and none of them in the rail",
+          'class="day' not in rail)
+
+    # Everything that describes the week rather than being it.
+    for what, marker in [("the header", "<h1>"),
+                         ("the actions", 'class="actions"'),
+                         ("the money block", 'class="money"'),
+                         ("the library strip", 'class="library"'),
+                         ("the side-dish shelf", 'class="sides"')]:
+        check(f"{what} is in the rail", marker in rail,
+              f"found in the week instead" if marker in week else "not found")
+
+    # A card is a gutter and a body; the gutter is what makes a wide stacked
+    # card read as a row rather than a paragraph with a date on top.
+    check("each card has its day gutter and its body",
+          week.count('class="day-when"') == 7
+          and week.count('class="day-body"') == 7,
+          f"{week.count(chr(34) + 'day-when')} gutters, "
+          f"{week.count(chr(34) + 'day-body')} bodies")
 
 
 def _availability(check):

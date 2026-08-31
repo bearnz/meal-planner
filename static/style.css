@@ -48,6 +48,70 @@ h2 { font-size: 1rem; margin: 0; }
   border-bottom: 1px solid var(--line);
 }
 
+/* --- two slices ------------------------------------------------------------
+   Everything that describes the week -- what it costs, where the recipes came
+   from, what was held back -- lives in the rail and stays put. The week itself
+   is one column of seven cards, read top to bottom the way the days arrive.
+
+   The rail is the narrow one on purpose: it is reference, and the dinners are
+   what you came to look at. */
+.page {
+  display: grid; gap: 1.5rem clamp(1.25rem, 3vw, 2.5rem);
+  grid-template-columns: minmax(20rem, 24rem) minmax(0, 1fr);
+  align-items: start;
+}
+
+/* Sticky, because seven stacked cards make a long page and the actions must
+   not scroll away with the first course. Capped and scrollable in its own
+   right for the rare rail that is taller than the window -- a rail you cannot
+   reach the bottom of is worse than one with a scrollbar. */
+.rail {
+  position: sticky; top: 1.25rem;
+  max-height: calc(100vh - 2.5rem); overflow-y: auto;
+  scrollbar-width: thin;
+  /* Room for the scrollbar so text does not sit under it. */
+  padding-right: 0.35rem;
+}
+
+/* In a rail the header is a column, not a bar: there is no room to put four
+   buttons opposite a title, and the underline that separated them across the
+   page now separates the rail's own sections. */
+.rail .bar {
+  display: block; padding-bottom: 0.9rem; margin-bottom: 1.1rem;
+}
+.rail .actions { margin-top: 0.9rem; }
+.rail .money, .rail .undo, .rail .library { margin-bottom: 1.1rem; }
+/* The money block was built to sit across a page and has to be told how to be
+   a column. Its figures pair up two by two rather than squeezing four abreast,
+   and the freshness line wraps instead of crushing a progress bar, a
+   percentage and a sentence into three narrow columns. */
+.rail .money-head {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem 1rem;
+}
+.rail .money-head > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.rail .freshness { flex-wrap: wrap; gap: 0.4rem 0.5rem; }
+.rail .freshness .bar-track { width: 100%; }
+.rail .freshness .dim { flex: 1 1 100%; }
+.rail .savings li { gap: 0.2rem 0.5rem; }
+.rail .s-item, .rail .s-store { min-width: 0; }
+.rail .refresh { flex-direction: column; align-items: flex-start; }
+.rail .refresh .dim { flex: 1 1 auto; }
+.rail .library { gap: 0.3rem 0.75rem; }
+.rail .sides { margin: 0; max-width: none; }
+.rail .note { margin-bottom: 0.9rem; }
+
+@media (max-width: 900px) {
+  /* One column, and the rail first: the title and the buttons belong at the
+     top of a page however narrow it gets. Nothing sticks, because on a phone
+     a sticky rail is just a screenful of chrome above the food. */
+  .page { display: block; }
+  .rail {
+    position: static; max-height: none; overflow: visible;
+    padding-right: 0; margin-bottom: 1.5rem;
+  }
+  .rail .bar { display: flex; }
+}
+
 .sub { margin: 0.25rem 0 0; color: var(--ink-soft); font-size: 0.85rem; }
 
 .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
@@ -80,15 +144,39 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
 .note { color: var(--ink-soft); font-size: 0.85rem; margin: 0 0 1.25rem; }
 .note.tiny { font-size: 0.75rem; margin: 0.6rem 0 0; }
 
+/* Seven cards, stacked. Not a grid any more: a week is a sequence, and two
+   columns of it meant reading Monday, Tuesday, then back up and across. */
+/* Capped rather than letting the column have everything: on a wide monitor a
+   card that runs the full width turns a one-line "why" into a stripe of text
+   with a metre of progress bar after it. The space left over sits to the
+   right, which is what space is for. */
 .week {
-  display: grid; gap: 0.9rem;
-  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  display: flex; flex-direction: column; gap: 0.9rem; max-width: 62rem;
 }
 
 .day {
   background: var(--card); border: 1px solid var(--line);
-  border-radius: 11px; padding: 1rem 1.05rem 0.85rem;
-  display: flex; flex-direction: column;
+  border-radius: 11px; padding: 1rem 1.15rem 0.85rem;
+  display: grid; grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: 0 1.25rem; align-items: start;
+}
+
+/* The day and its weather as a gutter down the left. A stacked card is wide,
+   and a head row across the top of one leaves the day name stranded a long way
+   from the temperature it belongs to. Down the side, the eye runs Monday,
+   Tuesday, Wednesday in one column and turns right into the dinner. */
+.day-when {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem;
+}
+.day-body { display: flex; flex-direction: column; min-width: 0; }
+
+@media (max-width: 640px) {
+  /* Back to a head row: at this width a 8.5rem gutter is a third of the card. */
+  .day { display: block; }
+  .day-when {
+    flex-direction: row; align-items: baseline; justify-content: space-between;
+    gap: 0.75rem; margin-bottom: 0.6rem; flex-wrap: wrap;
+  }
 }
 /* The three kinds of evening, each with its own weight on the page. An office
    day is the plain one; a weekend is the warm one; a weekday at home sits
@@ -115,10 +203,8 @@ button.small { font-size: 0.75rem; padding: 0.3rem 0.6rem; }
 .src.muted { color: var(--ink-soft); opacity: 0.75; }
 .scale { color: var(--accent); font-weight: 600; }
 
-.day-head {
-  display: flex; justify-content: space-between; align-items: flex-start;
-  gap: 0.75rem; margin-bottom: 0.6rem;
-}
+.day-head { display: block; }
+.day-head h2 { display: inline; }
 .date { color: var(--ink-soft); font-size: 0.78rem; }
 
 .wx { display: flex; align-items: baseline; gap: 0.3rem; white-space: nowrap; }

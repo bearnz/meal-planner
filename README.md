@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 787 checks over scoring, planning, costing and the forecast
+python selftest.py       # 802 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -458,10 +458,68 @@ the local file alone, and there is a test that says so, because five sitemap
 requests per page view is not a thing to do to somebody because a browser tab
 was left open.
 
-To have it happen without you: `python run.py --harvest` is safe to run on a
-schedule (Task Scheduler, cron, a login script). It is resumable, it refuses to
-re-read anything unchanged, and on a quiet week it costs five requests and
-exits.
+There is a **Sync recipes from RecipeTin Eats** button on the Preferences page
+too, in its own block below the settings form &mdash; it has to be outside that
+form, because HTML will not nest one form in another. It runs the same route
+and comes back to Preferences rather than bouncing you to the plan, with the
+outcome printed under the heading.
+
+### Running it unattended
+
+```bash
+python run.py --harvest --quiet
+```
+
+That is the shape a scheduled job wants: nothing on stdout, one dated line
+appended to `data/harvest.log`, and an exit code that means something. `--quiet`
+is not only a mute switch &mdash; under `pythonw.exe`, which is how a Windows
+task runs without flashing up a console window, `sys.stdout` is None and an
+ordinary `print` raises, so the noisy version cannot be scheduled silently at
+all. `main()` now substitutes a null stream when there is no console.
+
+The log is one line a run, because what you want six weeks later is "has this
+been working", and a progress bar written to a file answers that worse than one
+line a week does:
+
+```
+2026-08-31T18:36:22  0 new, 0 dinners, 1448 on file, 0 to go
+```
+
+**One harvest at a time, across processes.** This stopped being theoretical the
+moment it went on a timer: the task fires at 7:30, somebody presses the button
+at 7:30, both read `rte.json`, both add their own recipes, and whichever
+finishes last writes a file missing the other's work. Nothing errors &mdash; the
+recipes are simply not there, and `seen` says they were read, so they are never
+fetched again. `store.harvest_lock()` is an `O_EXCL` lock file taken by the
+service, so the button and the command are both covered; a lock older than 90
+minutes is broken, because the alternative is a killed process disabling the
+feature permanently and the fix being a file nobody knows to delete. A
+collision is reported as news rather than as a failure &mdash; the work is
+happening, just not here.
+
+On this machine it is a daily Task Scheduler entry:
+
+```
+MealPlanner-SyncRecipes   daily 07:30   pythonw run.py --harvest --quiet
+```
+
+created with `Register-ScheduledTask`, set to start when available so a missed
+run catches up. Remove it with:
+
+```bash
+schtasks /delete /tn MealPlanner-SyncRecipes /f
+```
+
+In a cloud deployment the same command is a cron line and needs nothing else:
+
+```
+30 7 * * *  cd /srv/meal-planner && python run.py --harvest --quiet
+```
+
+It is idempotent, resumable, refuses to re-read anything unchanged, exits
+non-zero only when the run genuinely failed, and on a quiet day costs five
+sitemap requests. The one thing it needs is a writable `data/` &mdash; the
+dataset, the log and the lock all live there.
 
 ### Link-first, and what that means
 
@@ -841,7 +899,7 @@ Running against a real 111-recipe Paprika library, plus about 1,400 recipes harv
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 787 checks, all passing
+python selftest.py                        # 802 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole

@@ -392,9 +392,10 @@ def harvest_web_recipes(config: dict, limit: int = 0, refresh: bool = False,
             "pending": max(0, partial.remaining),
         })
 
-    result = rte.harvest(rte.catalogue(), known, seen, limit=limit,
-                         progress=progress, checkpoint=save)
-    save(result)
+    with store.harvest_lock():
+        result = rte.harvest(rte.catalogue(), known, seen, limit=limit,
+                             progress=progress, checkpoint=save)
+        save(result)
     recipes = sorted(have.values(), key=lambda r: r["name"].lower())
 
     # How many of them the planner can actually use, which is the number worth

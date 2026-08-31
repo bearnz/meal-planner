@@ -4,6 +4,9 @@ __pycache__/
 .venv/
 venv/
 data/*.json
+# Local run state: the harvest's log and its lock file.
+data/*.log
+data/*.lock
 !data/.gitkeep
 # Reference data, not state: without it the store picker is empty
 # on a fresh clone and there is nothing to pick from.

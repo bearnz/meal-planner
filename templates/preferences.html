@@ -131,6 +131,61 @@
     <button type="submit">Save and re-plan the week</button>
   </div>
 </form>
+
+{#- Outside the form above, and it has to be: this is a second thing you can
+    submit from this page, and HTML has no way to nest one form in another. -#}
+<section class="pref-block">
+  <h2>Recipes from the web</h2>
+  <p class="pref-note">
+    Dinners from {{ recipes.source or 'RecipeTin Eats' }} that your Paprika
+    library does not have, scored the same way as your own and marked
+    <span class="untried">new to you</span> when one is planned. A scheduled
+    job keeps this current on its own; the button is for when you would rather
+    not wait for it.
+  </p>
+
+  {% if note and note.kind == 'recipes' and note.headline %}
+    <p class="pref-result {% if not note.ok %}bad{% endif %}">
+      {{ note.headline }}{% if note.remaining %} &mdash; press again for the
+      rest{% endif %}.
+    </p>
+  {% endif %}
+
+  <div class="pref-sync">
+    <form method="post" action="{{ url_for('refresh_recipes') }}"
+          class="refresh-form">
+      <input type="hidden" name="back" value="prefs">
+      <button type="submit" class="small"
+              {% if not recipes.ready %}disabled{% endif %}>
+        {%- if recipes.pending %}Read {{ recipes.pending }} more
+        {%- else %}Sync recipes from {{ recipes.source or 'the web' }}{% endif -%}
+      </button>
+    </form>
+    <span class="pref-hint">
+      {%- if not recipes.have %}
+        Nothing harvested yet. The first run reads about 1,700 pages and takes
+        half an hour &mdash; <code>python run.py --harvest</code> is the better
+        way to start it.
+      {%- elif not recipes.enabled %}
+        <b>{{ recipes.have }}</b> on file, but <code>"web_recipes": false</code>
+        in config.json is keeping them all out of the pool.
+      {%- elif recipes.pending %}
+        <b>{{ recipes.have }}</b> on file. A run stopped part way, so these are
+        already known about &mdash; finishing them asks the site for nothing new.
+      {%- elif recipes.ready %}
+        <b>{{ recipes.have }}</b> on file, <b>{{ recipes.in_pool }}</b> in the
+        pool. They publish a few a week, so this is usually a handful.
+      {%- else %}
+        <b>{{ recipes.have }}</b> on file, <b>{{ recipes.in_pool }}</b> in the
+        pool, checked {{ recipes.hours }}h ago. Next check in
+        {{ recipes.wait_hours }}h.
+      {%- endif -%}
+    </span>
+  </div>
+  {% if recipes.attribution %}
+    <p class="pref-note tiny">{{ recipes.attribution }}</p>
+  {% endif %}
+</section>
 {% endif %}
 
 </body>

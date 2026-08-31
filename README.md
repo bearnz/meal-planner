@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 802 checks over scoring, planning, costing and the forecast
+python selftest.py       # 812 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -651,6 +651,40 @@ every weeknight by looking artificially easy. Their effort tops out lower
 (0.67 against 0.84), which is honest: without the method prose there are fewer
 faff terms to find.
 
+## The page
+
+Two slices. The **rail** on the left holds everything that *describes* the week
+&mdash; the title, what it cost, where the recipes came from, what was held
+back, the side-dish shelf &mdash; and stays put while you scroll. The **week**
+on the right is one column of seven cards, read top to bottom the way the days
+actually arrive.
+
+It used to be a header across the top and a two-column grid of cards below,
+which meant reading Monday, Tuesday, then back up and across for Wednesday. A
+week is a sequence; a grid of it is not.
+
+The rail is the narrow one on purpose: it is reference, and the dinners are
+what you came to look at. It sticks at the top, because seven stacked cards
+make a long page and the buttons must not scroll away with the first course
+&mdash; capped at the window height and scrollable in its own right for the
+rare rail that is taller than the screen, since a rail you cannot reach the
+bottom of is worse than one with a scrollbar.
+
+**A stacked card is wide, so the day became a gutter.** With the day name and
+the weather in a row across the top of a 990px card, the two ended up a long
+way apart and the date was stranded above the dinner it belonged to. Down the
+left instead, the eye runs Monday, Tuesday, Wednesday in one column and turns
+right into the food. Below 640px the gutter would be a third of the card, so
+the head row comes back.
+
+Below 900px the whole thing is one column with the rail first, and nothing
+sticks: on a phone a sticky rail is a screenful of chrome above the food.
+
+The week column is capped at 62rem. On a wide monitor a card that runs the full
+width turns a one-line explanation into a stripe of text with a metre of
+progress bar after it; the space left over sits to the right, which is what
+space is for.
+
 ## Prices from grocer.nz
 
 Shelf prices for one store, pulled from [grocer.nz](https://grocer.nz). Needs
@@ -899,7 +933,7 @@ Running against a real 111-recipe Paprika library, plus about 1,400 recipes harv
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 802 checks, all passing
+python selftest.py                        # 812 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole

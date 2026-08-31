@@ -8,6 +8,14 @@
 </head>
 <body>
 
+{#- Two slices. Everything that describes the week -- what it costs, where the
+    recipes came from, what was held back -- sits in the rail on the left and
+    stays put; the week itself is the column on the right, one card a night,
+    read top to bottom the way the days actually arrive. -#}
+<div class="page">
+
+<aside class="rail">
+
 <header class="bar">
   <div>
     <h1>This week's dinners</h1>
@@ -352,13 +360,44 @@
   {% endif %}
 </div>
 
+{#- Sides are the one thing kept out of the week that is not a rejection, so
+    this is not a list of what was filtered -- it is the shelf you reach for on
+    the night the lamb needs potatoes. It is also the only place anyone will be
+    reminded that a hand-set side is hand-set, and so the only place they will
+    think to undo one. -#}
+{% if plan and plan.sides %}
+  <details class="sides">
+    <summary>
+      {{ plan.sides | length }} side dish{{ '' if plan.sides | length == 1 else 'es' }}
+      &mdash; never planned as a dinner, here for when a main wants one
+    </summary>
+    <ul>
+      {% for s in plan.sides %}
+        <li>
+          {% if s.url %}
+            <a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.name }}</a>
+          {% else %}{{ s.name }}{% endif %}
+          {% if s.by_hand %}
+            <span class="tiny" title="Not tagged Side in the library — set by hand in config.json under side_overrides">set by hand</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </details>
+{% endif %}
+
+</aside>
+
+<main class="week">
 {% if plan and plan.days %}
-<div class="week">
   {% for d in plan.days %}
   <article class="day type-{{ d.day_type }}">
 
-    <div class="day-head">
-      <div>
+    {#- A stacked card is wide, so the day and its weather become a gutter down
+        the left rather than a row across the top: the eye runs down Monday,
+        Tuesday, Wednesday in one column and across into the dinner. -#}
+    <div class="day-when">
+      <div class="day-head">
         <h2>{{ d.day_name }}</h2>
         <span class="date">{{ d.short_date }}</span>
         <form method="post" action="{{ url_for('office', iso_day=d.date) }}"
@@ -380,6 +419,8 @@
         {% endif %}
       </div>
     </div>
+
+    <div class="day-body">
 
     <h3 class="recipe">
       {% if d.source_url %}
@@ -477,38 +518,18 @@
     {% if not d.forecast_known %}
       <p class="note tiny">Beyond the forecast &mdash; using the last known day.</p>
     {% endif %}
+
+    </div>
   </article>
   {% endfor %}
-</div>
 {% elif not error %}
   <p class="note">No plan yet. Sync your recipes, then re-plan the week.</p>
 {% endif %}
+</main>
 
-{#- Sides are the one thing kept out of the week that is not a rejection, so
-    this is not a list of what was filtered -- it is the shelf you reach for on
-    the night the lamb needs potatoes. It is also the only place anyone will be
-    reminded that a hand-set side is hand-set, and so the only place they will
-    think to undo one. -#}
-{% if plan and plan.sides %}
-  <details class="sides">
-    <summary>
-      {{ plan.sides | length }} side dish{{ '' if plan.sides | length == 1 else 'es' }}
-      &mdash; never planned as a dinner, here for when a main wants one
-    </summary>
-    <ul>
-      {% for s in plan.sides %}
-        <li>
-          {% if s.url %}
-            <a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.name }}</a>
-          {% else %}{{ s.name }}{% endif %}
-          {% if s.by_hand %}
-            <span class="tiny" title="Not tagged Side in the library — set by hand in config.json under side_overrides">set by hand</span>
-          {% endif %}
-        </li>
-      {% endfor %}
-    </ul>
-  </details>
-{% endif %}
+</div>
+
+
 
 {#- A refresh is a round trip to another country and takes a couple of seconds,
     during which a button still reading "Refresh prices" gets pressed again --

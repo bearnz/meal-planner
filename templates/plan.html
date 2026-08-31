@@ -367,7 +367,9 @@
        and dropping the star for those hides the preference exactly where it is
        least obvious it applied. #}
     {% if d.preferred_source %}
-      <p class="src">&#11088; {{ d.domain or d.source or 'favourite source' }}</p>
+      <p class="src">&#11088; {{ d.domain or d.source or 'favourite source' }}
+        {%- if d.from_web %} <span class="untried"
+          title="Not in your Paprika library — harvested from the web, so nobody here has cooked it">new to you</span>{% endif %}</p>
     {% elif d.domain %}
       <p class="src muted">{{ d.domain }}</p>
     {% elif d.source %}

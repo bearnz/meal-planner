@@ -37,7 +37,8 @@
     "variety": 0.6,
     "source": 0.45,
     "avoid_method": 1.6,
-    "season": 0.7
+    "season": 0.7,
+    "saved": 0.4
   },
   "repeat_memory_weeks": 4,
   "exclude_categories": [

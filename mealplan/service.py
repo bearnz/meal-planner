@@ -22,6 +22,13 @@ class NoRecipes(RuntimeError):
     pass
 
 
+# What a harvested recipe says it is. `scoring.source_domain` reads this when
+# there is no source_url, and `preferred_sources` matches on it -- which is the
+# right answer here, since the whole reason these are worth having is that this
+# household already cooks from that site.
+SOURCE_LABEL = "recipetineats.com"
+
+
 # --- recipes -----------------------------------------------------------------
 
 def sync_recipes(progress: Callable[[int, int], None] | None = None) -> dict:
@@ -60,17 +67,170 @@ def score_all(config: dict, month: int | None = None) -> list[Scored]:
     """
     cache = store.load_cache()
     raw = [d for d in (cache.get("recipes") or []) if not d.get("in_trash")]
-    if not raw:
+
+    # Recipes harvested from the web join the same list and are scored by the
+    # same function, which is the whole reason they are shaped like Paprika
+    # recipes rather than given a parallel pipeline. Everything downstream --
+    # aversions, sides, seasonality, costing, the shopping list -- then works on
+    # them without knowing they came from anywhere unusual.
+    web = web_recipes(config)
+    if not raw and not web:
         raise NoRecipes(
             "No recipes cached yet. Hit Sync (or run: python run.py --sync) to "
             "pull them from Paprika."
         )
-    categories = cache.get("categories") or {}
+    # Their categories are already names, not Paprika's uids, so they map to
+    # themselves. `score` looks every category up in this dict either way.
+    categories = dict(cache.get("categories") or {})
+    categories.update({n: n for r in web for n in (r.get("categories") or [])})
+    raw = raw + web
     lat = float(config.get("latitude") or (config.get("_geo") or {}).get("lat") or 0.0)
     table = seasons.seasons_for(lat)
     month = month or seasons.month_for()
     return [score(paprika.Recipe.from_json(d), categories, config, table, month)
             for d in raw]
+
+
+def web_recipes(config: dict) -> list[dict[str, Any]]:
+    """Harvested recipes, in the shape `paprika.Recipe.from_json` reads.
+
+    Switched off by `"web_recipes": false` in config.json rather than by
+    deleting the file, because the file took an hour of somebody else's
+    bandwidth to build and "I want this week planned from my own library" is a
+    thing you might want on Tuesday and not on Wednesday.
+    """
+    if not config.get("web_recipes", True):
+        return []
+    data = store.load_rte()
+    skip_leftovers = bool(config.get("skip_leftover_recipes", True))
+    out = []
+    for r in (data.get("recipes") or []):
+        if skip_leftovers and wants_leftovers(r.get("ingredients", "")):
+            continue
+        cats = list(r.get("categories") or [])
+        # Only applied to recipes the site itself did not already file as
+        # something other than dinner: its own word beats a guess made here.
+        if not (set(cats) & set(config.get("exclude_categories") or [])
+                | set(cats) & set(config.get("not_a_meal_categories") or [])):
+            verdict = web_verdict(cats, r.get("name", ""))
+            if not verdict:
+                continue
+            if verdict == "side" and "Side" not in cats:
+                cats = cats + ["Side"]
+        out.append({
+            "uid": r.get("uid", ""),
+            "name": r.get("name", ""),
+            "ingredients": r.get("ingredients", ""),
+            # No directions, on purpose. `method_terms` is what was kept of
+            # them; see rte.py.
+            "directions": "",
+            "description": r.get("description", ""),
+            "categories": cats,
+            "prep_time": r.get("prep_time", ""),
+            "cook_time": r.get("cook_time", ""),
+            "total_time": r.get("total_time", ""),
+            "servings": r.get("servings", ""),
+            "source": SOURCE_LABEL,
+            "source_url": r.get("url", ""),
+            "steps": int(r.get("steps") or 0),
+            "method_terms": list(r.get("method_terms") or []),
+        })
+    return out
+
+
+_LEFTOVER_RE = re.compile(r"\bleft[- ]?overs?\b", re.I)
+
+
+def wants_leftovers(ingredients: str) -> bool:
+    """Whether a recipe's shopping list starts with yesterday's dinner.
+
+    RecipeTin Eats runs a "cook once eat thrice" series, and about one recipe
+    in twenty-five lists something like "2 cups leftover beef from Slow Cooked
+    Beef Cheeks in Red Wine". Those are real recipes and good ones; they are
+    just not things a planner can book for Thursday, because the shopping list
+    it produces has a line on it that no shop sells and that only exists if you
+    already cooked something else.
+
+    Filtered here rather than at harvest time so it stays a decision this
+    project makes -- `"skip_leftover_recipes": false` puts them back without
+    re-reading two thousand pages to change our mind.
+    """
+    return any(_LEFTOVER_RE.search(line)
+               for line in (ingredients or "").splitlines())
+
+
+# What makes a harvested recipe plausibly a dinner. `is_dinner` keeps a recipe
+# with no categories at all, which is right for a Paprika library -- an
+# uncategorised library should still plan -- and exactly wrong for this one.
+# Here, no tags does not mean "uncurated", it means the classifier looked at the
+# page and could not place it, which is a reason to doubt the recipe rather than
+# to trust it. Left alone, the planner served "Gingerbread Boxes & Mason Jars"
+# on a Saturday.
+PROTEIN_TAGS = {"Beef", "Chicken", "Fish", "Lamb", "Pork", "Vege"}
+_HOW_TO_RE = re.compile(r"^how to\b|^how do you\b|\bguide\b", re.I)
+# Facets that carry a dinner on their own, for the meals that are a bowl of
+# something rather than a piece of protein.
+MAIN_TAGS = {"Pasta", "Rice", "Noodles", "Curry", "Soup and stew", "Stir fry"}
+
+
+def web_verdict(categories: list[str], name: str = "") -> str:
+    """"dinner", "side" or "" for a harvested recipe, from its tags alone.
+
+    Three failures in one plan drove this, and they are three shapes of the
+    same mistake -- reading silence as approval:
+
+      Gingerbread Boxes & Mason Jars   []                  a craft post
+      Freezer Friendly Mexican Meals   ["Mexican"]         a round-up
+      Lemon Potato Salad               ["Potato", "Salad"] a side
+
+    So a harvested recipe has to *earn* dinner with a protein or a facet that
+    is a meal on its own. A salad without a protein is a side, because a Thai
+    beef salad is dinner and a potato salad is what goes next to one. Anything
+    with nothing recognisable at all is not offered: it is a Christmas craft
+    or a list of links, and there is no tag for that.
+
+    Computed here rather than burned in at harvest time, so a better rule is a
+    re-read of one local file instead of two thousand of somebody else's pages.
+    """
+    # A technique post is not a dinner however much ham is in it. Only the
+    # "how to" opening and a "guide" are matched, and the narrowness is the
+    # point: the obvious wider net -- a leading number, the word "meals",
+    # "recipes" -- catches "12 Minute Baked Salmon Fajitas", which is just how
+    # that site names a perfectly good Tuesday.
+    if _HOW_TO_RE.search(name or ""):
+        return "side"
+
+    tags = set(categories or [])
+    protein = tags & PROTEIN_TAGS
+    if protein:
+        return "dinner"
+    if "Salad" in tags:
+        return "side"
+    if tags & MAIN_TAGS:
+        return "dinner"
+    return "side" if tags else ""
+
+
+def recipes_by_uid(config: dict | None = None) -> dict[str, dict[str, Any]]:
+    """Every recipe this app knows about, Paprika's and the web's, by uid.
+
+    It exists because two other places built this dict from the Paprika cache
+    alone, and the day harvested recipes joined the pool that turned into a
+    silent hole: the planner would happily put one on Thursday, and then the
+    money block could not price Thursday and the shopping list had nothing to
+    buy for it. Neither failed loudly -- a recipe the lookup misses is simply
+    skipped -- so the fix is to stop having two answers to "what recipes are
+    there".
+    """
+    if config is None:
+        try:
+            config = store.load_config()
+        except (FileNotFoundError, ValueError):
+            config = {}
+    out = {r["uid"]: r for r in (store.load_cache().get("recipes") or [])
+           if r.get("uid")}
+    out.update({r["uid"]: r for r in web_recipes(config) if r.get("uid")})
+    return out
 
 
 def load_library(config: dict, month: int | None = None) -> list[Scored]:
@@ -140,6 +300,70 @@ def _side_payload(s: Scored, config: dict) -> dict[str, Any]:
         "uid": s.uid,
         "url": s.recipe.source_url or "",
         "by_hand": s.name in (config.get("side_overrides") or {}),
+    }
+
+
+# --- recipes from the web -----------------------------------------------------
+
+def harvest_web_recipes(config: dict, limit: int = 0, refresh: bool = False,
+                        progress: Callable[[int, int, str], None] | None = None
+                        ) -> dict[str, Any]:
+    """Add RecipeTin Eats recipes this library does not already have.
+
+    Two skips do the real work here and both are about not wasting somebody
+    else's bandwidth. Sixty-three of the ninety-nine recipes in Paprika already
+    came from that site, so those pages are never fetched at all; and every page
+    a previous run read is remembered against the `lastmod` it was read at, so
+    an interrupted harvest resumes and an unchanged recipe is never read twice.
+
+    `refresh` drops the second of those, which is how you pick up edits the site
+    has made to recipes already on file.
+    """
+    from . import rte
+
+    data = store.load_rte()
+    have = {r.get("url", ""): r for r in (data.get("recipes") or []) if r.get("url")}
+    seen: dict[str, str] = {} if refresh else dict(data.get("seen") or {})
+
+    cached = [d for d in (store.load_cache().get("recipes") or [])
+              if not d.get("in_trash")]
+    known = rte.known_urls(cached)
+
+    def save(partial: "rte.Harvest") -> None:
+        for record in partial.added:
+            have[record["url"]] = record
+        seen.update(partial.seen)
+        store.save_rte({
+            "fetched": rte.stamp(),
+            "source": {"name": rte.SOURCE_NAME, "url": rte.SOURCE_URL,
+                       "attribution": rte.ATTRIBUTION},
+            "recipes": sorted(have.values(), key=lambda r: r["name"].lower()),
+            "seen": seen,
+        })
+
+    result = rte.harvest(rte.catalogue(), known, seen, limit=limit,
+                         progress=progress, checkpoint=save)
+    save(result)
+    recipes = sorted(have.values(), key=lambda r: r["name"].lower())
+
+    # How many of them the planner can actually use, which is the number worth
+    # reporting: a harvest of four hundred desserts has added nothing.
+    dinners = sum(1 for r in result.added
+                  if not (set(r.get("categories") or [])
+                          & set(config.get("exclude_categories") or [])
+                          | set(r.get("categories") or [])
+                          & set(config.get("not_a_meal_categories") or [])))
+    return {
+        "total": len(recipes),
+        "harvest": {
+            "added": len(result.added),
+            "dinners": dinners,
+            "skipped_known": result.skipped_known,
+            "skipped_seen": result.skipped_seen,
+            "not_recipes": len(result.not_recipes),
+            "failed": result.failed,
+            "remaining": result.remaining,
+        },
     }
 
 
@@ -349,6 +573,12 @@ def _day_payload(choice, forecast_known: bool, household: int = 0,
         "unattended": s.unattended,
         "domain": s.domain,
         "preferred_source": s.preferred_source,
+        # Whether this is one of yours or one nobody here has cooked. Worth
+        # saying on the card: a night you have made twenty times and a night
+        # off a website you have never opened are different propositions on a
+        # Wednesday, and without the marker the only tell is not recognising
+        # your own dinner.
+        "from_web": bool(s.uid.startswith("rte:")),
         "in_season": s.in_season,
         "out_of_season": s.out_of_season,
         "season_score": round(s.season_score, 3),
@@ -473,8 +703,7 @@ def money_summary(plan: dict, config: dict) -> dict[str, Any]:
         return {}
 
     primary = str(config.get("primary_store") or cat.primary)
-    cache = store.load_cache()
-    by_uid = {r["uid"]: r for r in (cache.get("recipes") or [])}
+    by_uid = recipes_by_uid(config)
     ingredients = [by_uid[d["uid"]].get("ingredients", "")
                    for d in plan["days"] if d.get("uid") in by_uid]
 
@@ -905,9 +1134,8 @@ def _shopping_days(plan: dict, people: int) -> list[dict[str, Any]]:
     line says, what it is really buying, or whether it is already in the
     cupboard -- which they would within a week of being written twice.
     """
-    cache = store.load_cache()
     cat = catalogue()
-    by_uid = {r["uid"]: r for r in (cache.get("recipes") or [])}
+    by_uid = recipes_by_uid()
     out = []
     for d in plan.get("days", []):
         r = by_uid.get(d.get("uid"))

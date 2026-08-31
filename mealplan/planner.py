@@ -184,6 +184,30 @@ def _source_cost(s: Scored, config: dict) -> float:
     return 0.0 if s.preferred_source else float(config["weights"].get("source", 0.0))
 
 
+def _saved_cost(s: Scored, config: dict) -> float:
+    """A discount for a recipe you actually took the trouble to save.
+
+    Same shape and the same argument as `_source_cost` above, and it exists for
+    a reason that only appeared once the library got big: harvesting the web
+    put 591 recipes in the pool against the 88 in Paprika, and a recipe you
+    chose is then outnumbered seven to one. The first week planned that way had
+    all seven nights from the web. Nothing was wrong with any of them -- that
+    is the point. Saving a recipe is the strongest statement of preference in
+    this whole project, stronger than the source it came from, and a pool that
+    ignores it hands you a stranger's week.
+
+    A cost on the unsaved rather than a bonus on the saved, so it cannot drive
+    a total negative. At the default it wins a close call and loses to a real
+    mismatch, which keeps a harvested recipe winning the nights where it is
+    genuinely the better answer. Set `weights.saved` to 0 to plan purely on
+    merit and let the whole pool compete flat.
+    """
+    weight = float(config.get("weights", {}).get("saved", 0.0))
+    if weight <= 0 or not s.uid:
+        return 0.0
+    return weight if s.uid.startswith("rte:") else 0.0
+
+
 def _method_cost(s: Scored, config: dict) -> float:
     """A heavy charge for a cooking method the household would rather avoid.
 
@@ -221,6 +245,7 @@ def pair_cost(s: Scored, slot: Slot, config: dict, recent: dict[str, int]) -> fl
     heart = abs(s.heartiness - want)
     return (
         _source_cost(s, config)
+        + _saved_cost(s, config)
         + _method_cost(s, config)
         + _season_cost(s, config)
         + float(w.get("heartiness", 1.0)) * heart

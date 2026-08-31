@@ -21,6 +21,7 @@ PLAN_PATH = DATA / "plan.json"
 HISTORY_PATH = DATA / "history.json"
 UNDO_PATH = DATA / "prefs_undo.json"
 PRICE_NOTE_PATH = DATA / "price_note.json"
+RTE_PATH = DATA / "rte.json"
 
 DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday",
              "saturday", "sunday"]
@@ -151,6 +152,22 @@ def clear_undo() -> None:
         UNDO_PATH.unlink()
     except (FileNotFoundError, OSError):
         pass
+
+
+def load_rte() -> dict:
+    """Recipes harvested from the web. Missing is fine -- the pool is Paprika's.
+
+    Its own file rather than folded into the recipe cache, because the two have
+    different lifetimes and different owners: `--sync` rewrites the cache from
+    Paprika wholesale and would throw these away every time, and these are the
+    only recipes here that nobody in this house has ever chosen.
+    """
+    d = _read_json(RTE_PATH, {})
+    return d if isinstance(d, dict) else {}
+
+
+def save_rte(payload: dict) -> None:
+    _write_json(RTE_PATH, payload)
 
 
 def load_price_note() -> dict:

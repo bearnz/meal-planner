@@ -62,6 +62,13 @@ class Recipe:
     # Paprika's own content hash, from the recipe index. Kept so a re-sync can
     # skip anything unchanged; nothing else reads it.
     hash: str = ""
+    # Two fields Paprika never sets, for recipes read from a website whose
+    # method was deliberately not kept (see rte.py). `steps` is how many steps
+    # the source stated, and `method_terms` is the techniques its method
+    # mentioned, as plain words -- enough for the aversion check and the effort
+    # score without warehousing somebody else's prose.
+    steps: int = 0
+    method_terms: list[str] = field(default_factory=list)
 
     @classmethod
     def from_api(cls, d: dict[str, Any]) -> "Recipe":
@@ -83,6 +90,8 @@ class Recipe:
             source_url=str(d.get("source_url", "") or ""),
             in_trash=bool(d.get("in_trash")),
             hash=str(d.get("hash", "") or ""),
+            steps=int(d.get("steps") or 0),
+            method_terms=list(d.get("method_terms") or []),
         )
 
     def to_json(self) -> dict[str, Any]:
@@ -95,6 +104,11 @@ class Recipe:
             "servings": self.servings, "rating": self.rating,
             "source": self.source, "source_url": self.source_url,
             "in_trash": self.in_trash, "hash": self.hash,
+            # Only when set, which for a Paprika recipe is never. Writing
+            # "steps": 0 into all 111 cached recipes is a diff on every sync
+            # that says nothing.
+            **({"steps": self.steps} if self.steps else {}),
+            **({"method_terms": self.method_terms} if self.method_terms else {}),
         }
 
     @classmethod

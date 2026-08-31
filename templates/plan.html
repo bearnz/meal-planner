@@ -95,6 +95,40 @@
   </div>
 {% endif %}
 
+{#- How the last refresh went. It has to survive the redirect, so it is written
+    down rather than rendered from the POST, and it names the exceptions out
+    loud: a pin whose product has been delisted stays broken until a person
+    re-pins it, and nothing else in this app is ever going to mention it. -#}
+{% if note and note.headline %}
+  <div class="undo {% if not note.ok %}failed{% endif %}">
+    <div class="undo-text">
+      {#- Three outcomes, not two. A refresh that ran and found the file
+          unchanged since last week is neither a success to announce nor a
+          failure to warn about, and "Prices refreshed" over a 304 is the app
+          claiming credit for a download it did not make. -#}
+      <strong>
+        {%- if not note.ok %}Prices could not be refreshed.
+        {%- elif note.updated %}Prices refreshed.
+        {%- else %}Nothing to refresh.{% endif -%}
+      </strong>
+      {{ note.headline }}{% if note.updated and note.store %} at {{ note.store }}{% endif %}.
+      {% if note.missing %}
+        <span class="tiny">No longer stocked, so still on the old price:
+          {{ note.missing | join('; ') }} &mdash; find a replacement with
+          <code>python run.py --grocer-find "&lt;item&gt;"</code>.</span>
+      {% endif %}
+      {% if note.skipped %}
+        <span class="tiny">Left alone: {{ note.skipped | join('; ') }}</span>
+      {% endif %}
+    </div>
+    <div class="undo-actions">
+      <form method="post" action="{{ url_for('dismiss_price_note') }}">
+        <button type="submit" class="ghost small">Dismiss</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
 {% if plan and plan.money and plan.money.per_portion_avg %}
   {% set m = plan.money %}
   <section class="money">
@@ -194,6 +228,53 @@
         used for personal, non-commercial use{% if m.source.fetched %},
         last refreshed {{ m.source.fetched[:10] }}{% endif %}.
       </p>
+    {% endif %}
+    {#- The refresh lives here rather than up with the plan actions because it
+        is a button about money, and the two sentences directly above it -- how
+        much of this week is a real price, and when these were last read -- are
+        the ones that make somebody want to press it.
+
+        It disables itself inside grocer.nz's refresh interval and says when it
+        comes back. That is not politeness dressed up as a feature: they publish
+        one file per store, about daily, so inside the interval there is no new
+        number to fetch and a working button would only spend their bandwidth
+        writing down what is already on the screen.
+
+        No `title` on the button: on a control with a label, a tooltip is read
+        out *instead of* that label, so a screen reader announced "one download
+        of about 60 KB..." and never the word "Refresh". What it said was worth
+        saying, so it moved into the sentence beside it, where it is visible to
+        everyone who does not hover. -#}
+    {% if prices and prices.pinned %}
+      <div class="refresh">
+        <form method="post" action="{{ url_for('refresh_prices') }}"
+              class="refresh-form">
+          <button type="submit" class="small"
+                  {% if not prices.ready %}disabled{% endif %}>
+            Refresh prices
+          </button>
+        </form>
+        <span class="dim">
+          {% if prices.moved %}
+            You have changed shop{% if prices.was %} &mdash; these are still
+            {{ prices.was }}'s prices{% endif %}. Refresh to read
+            {{ prices.store_name or prices.store }}.
+          {% elif prices.ready %}
+            {{ prices.pinned }} pinned prices at
+            {{ prices.store_name or prices.store }},
+            {% if prices.hours is none %}never read yet.
+            {% elif prices.hours < 48 %}read {{ prices.hours }}h ago.
+            {% else %}read {{ (prices.hours / 24) | round | int }} days ago.
+            {% endif %}
+            One request, about 60 KB.
+          {% else %}
+            Read {{ prices.hours }}h ago. grocer.nz publishes about once a day,
+            so there is nothing new to fetch for another
+            {{ prices.wait_hours }}h &mdash;
+            <code>python run.py --grocer-refresh --force</code> insists.
+          {% endif %}
+        </span>
+      </div>
     {% endif %}
     {% if m.low_confidence or m.unpriced_days %}
       <p class="note tiny">
@@ -373,6 +454,20 @@
     </ul>
   </details>
 {% endif %}
+
+{#- A refresh is a round trip to another country and takes a couple of seconds,
+    during which a button still reading "Refresh prices" gets pressed again --
+    and the second press is a second download, because the interval that would
+    have refused it is read from a file the first press has not written yet. -#}
+<script>
+  document.querySelectorAll("form.refresh-form").forEach(function (f) {
+    f.addEventListener("submit", function () {
+      var b = f.querySelector("button");
+      if (b) { b.textContent = "Fetching…"; b.classList.add("busy"); }
+      window.setTimeout(function () { if (b) { b.disabled = true; } }, 0);
+    });
+  });
+</script>
 
 </body>
 </html>

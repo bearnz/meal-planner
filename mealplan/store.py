@@ -20,6 +20,7 @@ CACHE_PATH = DATA / "recipes.json"
 PLAN_PATH = DATA / "plan.json"
 HISTORY_PATH = DATA / "history.json"
 UNDO_PATH = DATA / "prefs_undo.json"
+PRICE_NOTE_PATH = DATA / "price_note.json"
 
 DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday",
              "saturday", "sunday"]
@@ -148,6 +149,31 @@ def clear_undo() -> None:
     """Called by any other action, so the banner never outlives its context."""
     try:
         UNDO_PATH.unlink()
+    except (FileNotFoundError, OSError):
+        pass
+
+
+def load_price_note() -> dict:
+    """How the last price refresh went, so a redirect can still report it.
+
+    Same reasoning as the undo snapshot above and the same shape. The app has
+    no sessions and wants none, and a POST that redirects has nowhere to leave
+    its answer. Rendering the outcome straight from the POST would work right
+    up until somebody pressed F5 and re-fetched grocer.nz to redraw a banner,
+    so the answer is written down and the redirect picks it up.
+    """
+    n = _read_json(PRICE_NOTE_PATH, {})
+    return n if isinstance(n, dict) else {}
+
+
+def save_price_note(note: dict) -> None:
+    _write_json(PRICE_NOTE_PATH, note)
+
+
+def clear_price_note() -> None:
+    """Cleared by any other action, so the banner never outlives its context."""
+    try:
+        PRICE_NOTE_PATH.unlink()
     except (FileNotFoundError, OSError):
         pass
 

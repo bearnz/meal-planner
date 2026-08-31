@@ -445,3 +445,38 @@ li:hover > .parts { display: block; }
            border-bottom: 1px solid var(--accent-soft); }
 .sides a:hover { border-bottom-color: var(--accent); }
 .sides .tiny { margin-left: .45rem; color: var(--accent); opacity: .8; }
+
+/* --- refreshing the shelf prices ------------------------------------------- */
+/* Sits under the attribution inside the money block, on one line with the
+   sentence that explains it: the button on its own answers "can I?" and never
+   "should I?", and the sentence beside it is the whole reason to press. */
+.refresh {
+  margin: 0.7rem 0 0; padding-top: 0.6rem; border-top: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: baseline;
+}
+.refresh form { margin: 0; }
+.refresh .dim {
+  flex: 1 1 16rem; color: var(--ink-soft); font-size: 0.74rem; line-height: 1.5;
+}
+.refresh code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+/* There was no disabled style at all, and the default accent button looks
+   entirely pressable while doing nothing -- which is exactly the confusion the
+   whole interval-aware button exists to avoid. */
+button:disabled, button:disabled:hover {
+  background: transparent; color: var(--ink-soft);
+  border-color: var(--line); cursor: not-allowed; filter: none;
+}
+button.busy { opacity: .7; cursor: progress; }
+
+/* A refresh that failed is nearly always "there is no internet", which is
+   neither a preferences change nor an error page -- so it borrows the banner
+   and the error palette, and not `.shrunk`, which means "your library got
+   smaller" and would say the wrong thing in the right colour. */
+.undo.failed {
+  border-color: var(--error-ink); background: var(--error-bg);
+  color: var(--error-ink);
+}
+.undo-text .tiny {
+  display: block; margin-top: 0.35rem; font-size: 0.75rem; opacity: .8;
+}
+.undo-text code { font-family: ui-monospace, Menlo, Consolas, monospace; }

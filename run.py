@@ -363,14 +363,15 @@ def cmd_grocer_pin(args) -> int:
 
 
 def cmd_grocer_refresh(args) -> int:
-    """The weekly job: one 60 KB download, every pinned price updated."""
-    from mealplan import grocer
+    """The weekly job: one 60 KB download, every pinned price updated.
 
+    The work itself lives in the service layer because the plan page has a
+    button for it now too, and two callers each deciding which store to read
+    and whether the interval applies is how a button and a command come to
+    disagree about what "refresh" means.
+    """
     config = store.load_config()
-    store_id, storename = _grocer_store(config)
-    data, _ = _catalogue()
-    result = grocer.refresh(data, store_id, storename, force=bool(args.force))
-    store._write_json(store.PRICES_PATH, data)
+    result = service.refresh_prices(config, force=bool(args.force))
 
     print(f"\n  {result['status']}")
     for line in result["updated"]:
@@ -379,8 +380,12 @@ def cmd_grocer_refresh(args) -> int:
         print(f"    gone  {line}")
     for line in result["skipped"]:
         print(f"    skip  {line}")
-    print(f"\n  {len(result['updated'])} price(s) updated at {storename}.")
-    print(f"  {grocer.ATTRIBUTION}\n")
+    if result["counts"]["updated"]:
+        print(f"\n  {result['headline'].capitalize()} at {result['store']}.")
+    # Nothing updated means the status line above already said everything there
+    # was to say, and repeating it as a headline only rephrases a refusal as
+    # though it were a result.
+    print(f"\n  {result['attribution']}\n")
     return 0
 
 

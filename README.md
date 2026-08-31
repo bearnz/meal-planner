@@ -15,7 +15,7 @@ python run.py --sync     # pull recipes from Paprika into the local cache
 python run.py --plan     # print this week's plan to the terminal
 python run.py --scores   # every recipe with its heartiness and effort scores
 python run.py --stale    # which prices are real and which are estimates
-python selftest.py       # 636 checks over scoring, planning, costing and the forecast
+python selftest.py       # 663 checks over scoring, planning, costing and the forecast
 ```
 
 ## Setup
@@ -439,10 +439,11 @@ costed against, so picking a New World store re-costs the week against New
 World. Only chains the price file has a column for are offered — a Fresh Choice
 store would fetch perfectly and then be costed against nothing.
 
-Changing store does **not** re-fetch; the page says so and points at
-`--grocer-refresh`. The refresh knows it has moved and ignores the old ETag,
-because a 304 there would leave the new shop's plan costed at the old shop's
-prices.
+Changing store does not re-fetch on its own, but it does light up the refresh
+button on the plan page and say why. A move ignores the refresh interval *and*
+the old ETag: the interval exists to stop the same file being downloaded twice
+and this is a different file, and a 304 there would leave the new shop's plan
+costed at the old shop's prices.
 
 The store list ships in `data/grocer_stores.json` (465 stores) so the picker
 works on a fresh clone. `--grocer-stores --refresh` re-downloads it, needs
@@ -460,6 +461,38 @@ Parquet file per store holding every current price — about 10,000 products —
 so a full refresh is a single download, and an unchanged one is a 304 with no
 body. `--grocer-find` is the only thing that makes extra requests, and only when
 you are adding an ingredient.
+
+### Refreshing from the page
+
+There is a **Refresh prices** button in the money block, under the line that
+says when prices were last read — which is the sentence that makes anybody want
+to press it. One press is the whole weekly job: one request, about 60 KB, every
+pinned price updated.
+
+It knows before you press whether it can do anything. grocer.nz publishes one
+file per store roughly daily and `MIN_REFRESH_HOURS` refuses to re-fetch inside
+twenty hours, so inside that window the button is **drawn disabled** and says
+how long is left. That is not politeness dressed up as a feature: there is no
+new number to fetch, and a working button would spend somebody else's bandwidth
+writing down what is already on the screen. `--grocer-refresh --force` is on the
+command line for whoever means it.
+
+The outcome comes back as a banner above the week, and it has three states
+rather than two — a refresh that ran and found the file unchanged is neither a
+success to announce nor a failure to warn about, and *Prices refreshed* over a
+304 is the app taking credit for a download it never made. Anything that could
+not be updated is named: a pin whose product has been delisted stays broken
+until a person re-pins it, and no other screen will ever mention it.
+
+A refusal writes nothing. `prices.json` is hand-edited and hand-formatted, and
+rewriting it from a parsed dict reflows every compact alias list in the file —
+so a button pressed out of habit used to produce a four-hundred-line diff in
+which not one price had changed.
+
+The button and `--grocer-refresh` are the same function
+(`service.refresh_prices`). Two callers each deciding which store to read and
+whether the interval applies is how a button and a command come to disagree
+about what "refresh" means.
 
 **What the page shows.** Two different doubts, kept apart, because one mark
 cannot say both:
@@ -628,7 +661,7 @@ Running against a real 111-recipe Paprika library. To pick it up:
 ```bash
 python run.py --sync                      # pull your library (needs .env)
 python run.py                             # or seed_demo.py first, to try it dry
-python selftest.py                        # 636 checks, all passing
+python selftest.py                        # 663 checks, all passing
 ```
 
 **What the first real library changed.** Every one of these passed the whole
@@ -684,6 +717,14 @@ worth remembering: the synthetic library is clean, and a real one is not.
   otherwise, so there is a hand-written answer instead: `side_overrides` in
   config.json, keyed by name like `heartiness_overrides` beside it, and
   working in both directions. See "Sides" below.
+- **The weekly price refresh had no button, and the page it belonged on was the
+  one saying prices were stale.** It is there now, under the "last refreshed"
+  line, and the interesting half is that it renders itself from grocer.nz's
+  refresh interval rather than discovering it after the press: inside twenty
+  hours there is no new file to fetch, so a working button would answer with a
+  page that came back looking identical. It is drawn disabled and says how long
+  is left. Changing shop overrides that, because a different store is a
+  different file and the interval has nothing to say about it.
 - **The library already knew what this file spends 400 lines inferring.** Its
   `Vibe` tree — Easy, Effort, Heavy, Light — is the owner stating both scoring
   axes by hand, and `difficulty` is empty on all 99 recipes. Those tags now

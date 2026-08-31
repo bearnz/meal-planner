@@ -106,9 +106,10 @@
           unchanged since last week is neither a success to announce nor a
           failure to warn about, and "Prices refreshed" over a 304 is the app
           claiming credit for a download it did not make. -#}
+      {%- set thing = 'Recipes' if note.kind == 'recipes' else 'Prices' -%}
       <strong>
-        {%- if not note.ok %}Prices could not be refreshed.
-        {%- elif note.updated %}Prices refreshed.
+        {%- if not note.ok %}{{ thing }} could not be refreshed.
+        {%- elif note.updated %}{{ thing }} refreshed.
         {%- else %}Nothing to refresh.{% endif -%}
       </strong>
       {{ note.headline }}{% if note.updated and note.store %} at {{ note.store }}{% endif %}.
@@ -120,9 +121,13 @@
       {% if note.skipped %}
         <span class="tiny">Left alone: {{ note.skipped | join('; ') }}</span>
       {% endif %}
+      {% if note.remaining %}
+        <span class="tiny">Press it again to read the other
+          {{ note.remaining }} &mdash; the harvest picks up where it stopped.</span>
+      {% endif %}
     </div>
     <div class="undo-actions">
-      <form method="post" action="{{ url_for('dismiss_price_note') }}">
+      <form method="post" action="{{ url_for('dismiss_notice') }}">
         <button type="submit" class="ghost small">Dismiss</button>
       </form>
     </div>
@@ -295,9 +300,57 @@
   </section>
 {% endif %}
 
-{% if cache and cache.fetched %}
-  <p class="note">Recipes last synced {{ cache.fetched.replace('T', ' ') }}.</p>
-{% endif %}
+{#- Where the recipes come from and how fresh each source is. This replaced a
+    line that only ever said when Paprika was last synced, which was half the
+    answer once most of the pool came from somewhere else -- and the half that
+    needed no action, since Paprika syncs in seconds and the web does not. -#}
+<div class="library">
+  <span class="lib-part">
+    Paprika
+    <b>{{ (cache.recipes | rejectattr('in_trash') | list | length)
+           if cache and cache.recipes else 0 }}</b>
+    {%- if cache and cache.fetched %}
+      <span class="dim">synced {{ cache.fetched[:10] }}</span>{% endif %}
+  </span>
+
+  {% if recipes and recipes.have %}
+    <span class="lib-part">
+      {{ recipes.source }}
+      <b>{{ recipes.have }}</b>
+      <span class="dim">
+        {%- if not recipes.enabled %}switched off in config.json
+        {%- elif recipes.hours is none %}never checked
+        {%- elif recipes.hours < 48 %}checked {{ recipes.hours }}h ago
+        {%- else %}checked {{ (recipes.hours / 24) | round | int }} days ago{% endif -%}
+      </span>
+    </span>
+    <form method="post" action="{{ url_for('refresh_recipes') }}"
+          class="refresh-form">
+      <button type="submit" class="small"
+              {% if not recipes.ready %}disabled{% endif %}>
+        {%- if recipes.pending %}Read {{ recipes.pending }} more
+        {%- else %}Check for new recipes{% endif -%}
+      </button>
+    </form>
+    <span class="dim lib-note">
+      {%- if recipes.pending %}
+        A run stopped part way. These are already known about, so this does not
+        ask the site for anything new.
+      {%- elif recipes.ready %}
+        They publish a few a week. One check is five small requests, then one
+        page per new recipe.
+      {%- else %}
+        Next check in {{ recipes.wait_hours }}h, or
+        <code>python run.py --harvest</code> whenever you like.
+      {%- endif -%}
+    </span>
+  {% else %}
+    <span class="dim lib-note">
+      No web recipes yet &mdash; <code>python run.py --harvest</code> reads
+      RecipeTin Eats for the dinners your library does not have.
+    </span>
+  {% endif %}
+</div>
 
 {% if plan and plan.days %}
 <div class="week">

@@ -65,7 +65,7 @@ ASSETS = "https://assets-prod.grocer.nz/public"
 PRICES_URL = ASSETS + "/prices_per_store_v3/public_prices_{store}.parquet"
 SEARCH_URL = "https://meilisearch.grocer.nz/indexes/products/search"
 # Public, search-only. See the module docstring.
-SEARCH_KEY = "7f58239330307ec585c86863f985ab83cbb9ce951a9601c66e158548fb632fd1"
+SEARCH_KEY = "7f58239330307ec585c86863f985ab83cbb9ce951a9601c66e158548fb632fd1"  # gitleaks:allow -- public search-only key, see module docstring
 
 USER_AGENT = ("meal-planner/1.0 (personal, non-commercial; "
               "+https://github.com/bearnz/meal-planner)")

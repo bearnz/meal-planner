@@ -1,0 +1,3 @@
+# grocer.nz public search-only Meilisearch key (shipped in their site's JS; see
+# mealplan/grocer.py docstring). Accepted by Josh 2026-10-18; not a credential.
+ab8ce5864eb88faafd1025c5296f086c1a4de077:mealplan/grocer.py:generic-api-key:68

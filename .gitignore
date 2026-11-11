@@ -11,3 +11,12 @@ data/*.lock
 # Reference data, not state: without it the store picker is empty
 # on a fresh clone and there is nothing to pick from.
 !data/grocer_stores.json
+
+# Base entries from bearnz/project-template
+.env.*
+# Tracked on purpose: the template for a local .env.
+!.env.example
+*.local.json
+.claude/settings.local.json
+.DS_Store
+Thumbs.db

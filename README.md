@@ -26,8 +26,7 @@ python selftest.py       # 812 checks over scoring, planning, costing and the fo
    python -m pip install -r requirements.txt
    ```
 
-2. **Check your location.** `config.json` ships pointed at Auckland
-   (central Auckland) through explicit `latitude` / `longitude`.
+2. **Check your location.** `config.json` ships pointed at central Auckland through explicit `latitude` / `longitude`.
 
    Coordinates rather than a name because **Open-Meteo's geocoder cannot
    resolve postcodes and does not say so** — asked for an Auckland postcode it confidently

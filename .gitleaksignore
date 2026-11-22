@@ -1,4 +1,5 @@
 # grocer.nz public search-only Meilisearch key (shipped in their site's JS; see
 # mealplan/grocer.py docstring). Accepted by Josh 2026-10-18; not a credential.
-2a5ddb3907bdb00510d0cc3b93db540b6edd5c28:mealplan/grocer.py:generic-api-key:68
-# Fingerprint updated 2026-11-23 after the history rewrite changed the commit id.
+5e1a6b22530d6af1fb6fb31c6e96d062f30346e7:mealplan/grocer.py:generic-api-key:68
+# Fingerprint last updated 2026-11-23, after the attribution rewrite changed the
+# commit id a second time. It is a commit id, so any history rewrite breaks it.

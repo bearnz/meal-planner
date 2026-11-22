@@ -1124,3 +1124,12 @@ data/             cache, current plan, history (all gitignored)
   offered only when every line behind it converted to the same unit.
 - History records what the plan says, so it doubles as a log of what you ate.
   Only days that have actually passed count towards the repeat penalty.
+
+## Copyright
+
+Copyright (c) 2026 Josh (github.com/bearnz). All rights reserved.
+
+No licence is granted. You are welcome to read this code and to fork it on
+GitHub; you may not use, copy, modify or redistribute it without permission.
+See [NOTICE](NOTICE) for the terms, and open an issue if you would like to use
+any of it.
